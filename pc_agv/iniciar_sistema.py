@@ -78,8 +78,8 @@ _arduino_serial = None
 _arduino_state = {
     "connected": False,
     "port": None,
-    "baud": int(os.environ.get("AGV_ARDUINO_BAUD", "115200")),
-    "protocol": str(os.environ.get("AGV_ARDUINO_PROTOCOL", "wasd")).strip().lower() or "wasd",
+    "baud": int(os.environ.get("AGV_ARDUINO_BAUD", "9600")),
+    "protocol": str(os.environ.get("AGV_ARDUINO_PROTOCOL", "csv")).strip().lower() or "csv",
     "last_error": None,
     "last_command": None,
     "enabled": os.environ.get("AGV_ARDUINO_ENABLED", "1").strip() == "1",
@@ -88,7 +88,27 @@ _arduino_state = {
 _brain = None
 _brain_running = True
 
+_autopilot_running = True
+_autopilot_state = {
+    "enabled": os.environ.get("AGV_AUTOPILOT_ENABLED", "1").strip() == "1",
+    "loop_ms": int(os.environ.get("AGV_AUTOPILOT_LOOP_MS", "180")),
+    "last_tick": 0.0,
+    "last_error": None,
+    "last_action": None,
+    "arduino_sent": False,
+}
+
 _running = True          # False dispara Kill no runloop
+_kinect_thread = None
+_kinect_manager_running = True
+_kinect_last_frame_ts = 0.0
+_kinect_last_restart_ts = 0.0
+_kinect_restart_count = 0
+_kinect_force_reconnect = False
+_kinect_lock = threading.Lock()
+
+KINECT_STALE_TIMEOUT_S = float(os.environ.get("AGV_KINECT_STALE_TIMEOUT", "4.0"))
+KINECT_RESTART_COOLDOWN_S = float(os.environ.get("AGV_KINECT_RESTART_COOLDOWN", "6.0"))
 
 # Inicialização one-shot no body_cb
 _init_done = False
@@ -107,11 +127,25 @@ TILT_INTERVAL  = 0.8    # segundos mínimos entre comandos ao motor
 TILT_MIN       = -20.0
 TILT_MAX       = +20.0
 
-FACE_DB_PATH = os.path.join("logs", "faces_db.json")
-FACE_MATCH_THRESHOLD = 0.6
-FACE_SCAN_INTERVAL = 0.35
+# Caminho absoluto do banco — relativo à pasta do projeto (pai de pc_agv/).
+# Isso garante que o mesmo arquivo é usado independente do diretório de trabalho.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) if not getattr(sys, "frozen", False) else os.path.dirname(sys.executable)
+FACE_DB_PATH = os.environ.get("AGV_FACE_DB_PATH") or os.path.join(_PROJECT_ROOT, "logs", "faces_db.json")
+# Thresholds de distância euclidiana (face_recognition/dlib: 128-dim L2).
+# Valores menores = mais restritivo = menos falso-positivo.
+# mesma pessoa: ~0.20-0.45 | pessoa diferente: ~0.50-1.20
+FACE_MATCH_THRESHOLD              = float(os.environ.get("AGV_FACE_MATCH_THRESHOLD",              "0.40"))  # multi-amostras
+FACE_MATCH_THRESHOLD_SINGLE_SAMPLE = float(os.environ.get("AGV_FACE_MATCH_THRESHOLD_SINGLE_SAMPLE", "0.32"))  # 1 amostra real (sem augment)
+FACE_MATCH_THRESHOLD_SELECTED_ONLY = float(os.environ.get("AGV_FACE_MATCH_THRESHOLD_SELECTED_ONLY", "0.50"))  # modo "selected only"
+FACE_AMBIGUOUS_MARGIN             = float(os.environ.get("AGV_FACE_AMBIGUOUS_MARGIN",             "0.06"))  # folga entre 1º e 2º candidato
+FACE_MIN_SIZE_PX = int(os.environ.get("AGV_FACE_MIN_SIZE_PX", "40"))
+FACE_SCAN_INTERVAL = 0.90
+# Dimensão correta do face_recognition (dlib ResNet 128-D).
+FACE_ENCODING_DIM = 128
+FACE_REGISTER_MAX_DIM = int(os.environ.get("AGV_FACE_REGISTER_MAX_DIM", "1280"))
+FACE_LIVE_MAX_DIM = int(os.environ.get("AGV_FACE_LIVE_MAX_DIM", "640"))
 
-FRONTEND_REVISION = "2026.03.22-r2"
+FRONTEND_REVISION = "2026.04.12-r4"
 _RUNTIME_SOURCE = sys.executable if getattr(sys, "frozen", False) else __file__
 try:
     _RUNTIME_BUILD_TS = float(os.path.getmtime(_RUNTIME_SOURCE))
@@ -128,6 +162,7 @@ def _runtime_meta_snapshot():
     }
 
 _face_lock = threading.Lock()
+_face_recognition_lock = threading.Lock()
 _face_runtime = {
     "next_scan_at": 0.0,
     "last": {
@@ -138,6 +173,10 @@ _face_runtime = {
         "updated_at": 0.0,
         "trigger_id": 0,
     },
+}
+
+FACE_NAME_ALIASES = {
+    "kauann": "kauan",
 }
 _face_db = {
     "enabled": False,
@@ -152,7 +191,11 @@ def _safe_ascii_name(raw: str) -> str:
         if ch.isalnum() or ch in ("-", "_", " "):
             keep.append(ch)
     name = "".join(keep).strip()
-    return name[:40]
+    name = name[:40]
+    canonical = FACE_NAME_ALIASES.get(name.lower())
+    if canonical:
+        return canonical
+    return name
 
 
 def _save_face_db():
@@ -178,6 +221,7 @@ def _load_face_db():
         people = {}
 
     clean_people = {}
+    skipped_legacy = 0
     for name, samples in people.items():
         safe_name = _safe_ascii_name(name)
         if not safe_name or not isinstance(samples, list):
@@ -187,49 +231,105 @@ def _load_face_db():
             if not isinstance(sample, list):
                 continue
             vec = np.asarray(sample, dtype=np.float32)
-            if vec.ndim != 1 or vec.size != 96:
+            # Aceita apenas 128-dim (face_recognition/dlib padrao).
+            # Encodings de 96-dim sao de versoes antigas incompativeis e sao descartados.
+            if vec.ndim != 1 or vec.size != FACE_ENCODING_DIM:
+                skipped_legacy += 1
                 continue
             clean_samples.append(vec.tolist())
         if clean_samples:
             clean_people[safe_name] = clean_samples[:30]
+    if skipped_legacy:
+        log.warning("face db: %d amostra(s) descartada(s) — dimensao incorreta (requer %d-dim). "
+                    "Re-cadastre as pessoas afetadas.", skipped_legacy, FACE_ENCODING_DIM)
 
     with _face_lock:
         _face_db["enabled"] = bool(data.get("enabled", False))
         _face_db["selected"] = _safe_ascii_name(data.get("selected", ""))
         _face_db["people"] = clean_people
 
+def _resize_frame_max_dim(bgr_frame, max_dim):
+    if bgr_frame is None:
+        return None
+    h, w = bgr_frame.shape[:2]
+    long_edge = max(h, w)
+    if long_edge <= max_dim:
+        return bgr_frame
+    scale = float(max_dim) / float(long_edge)
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
+    return cv2.resize(bgr_frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-def _extract_face_signature(bgr_frame):
-    """Extract face encoding using deep learning (ResNet)."""
+
+def _registration_frame_variants(bgr_frame):
+    base = _resize_frame_max_dim(bgr_frame, FACE_REGISTER_MAX_DIM)
+    if base is None:
+        return []
+    return [
+        base,
+        cv2.rotate(base, cv2.ROTATE_90_CLOCKWISE),
+        cv2.rotate(base, cv2.ROTATE_90_COUNTERCLOCKWISE),
+        cv2.rotate(base, cv2.ROTATE_180),
+    ]
+
+
+def _extract_face_signature(bgr_frame, num_jitters=1, allow_cnn=True):
+    """Extrai encoding facial da maior face com filtros de qualidade."""
     if bgr_frame is None:
         return None, None
     if not _FACE_RECOGNITION_AVAILABLE:
         return None, None
-    
-    rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
-    
-    # Detectar faces usando face_recognition
-    face_locations = face_recognition.face_locations(rgb_frame, model="hog")
-    if not face_locations:
-        return None, None
-    
-    # Usar a maior face detectada
-    (top, right, bottom, left) = max(face_locations, key=lambda loc: (loc[2] - loc[0]) * (loc[3] - loc[1]))
-    
-    # Extrair encoding (embedding) da face
-    encodings = face_recognition.face_encodings(rgb_frame, [face_locations[0]])
-    if not encodings:
-        return None, None
-    
-    encoding = encodings[0]
-    bbox = (left, top, right - left, bottom - top)
-    
-    return encoding.astype(np.float32), bbox
+
+    # dlib/face_recognition pode encerrar o processo quando acessado em paralelo
+    # por múltiplas threads (stream ao vivo + cadastro/upload). Serializa as chamadas.
+    with _face_recognition_lock:
+        rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+
+        # Tenta HOG primeiro (mais rápido para tempo real).
+        face_locations = face_recognition.face_locations(rgb_frame, model="hog")
+        
+        # Se HOG falhar, tenta CNN (mais sensível e preciso).
+        if not face_locations and allow_cnn:
+            try:
+                face_locations = face_recognition.face_locations(rgb_frame, model="cnn")
+            except Exception as e:
+                _log(f"[FACE] CNN fallback falhou: {e}")
+                return None, None
+
+        if not face_locations:
+            return None, None
+
+        # Usa a maior face para evitar pegar pessoa ao fundo.
+        best = max(face_locations, key=lambda loc: (loc[2] - loc[0]) * (loc[1] - loc[3]))
+        top, right, bottom, left = best
+        w = max(0, right - left)
+        h = max(0, bottom - top)
+        
+        # Durante cadastro, aceita faces menores. Durante matching será mais rigoroso.
+        min_size_threshold = 30
+        if min(w, h) < min_size_threshold:
+            return None, None
+
+        # Importante: codificar exatamente a mesma face escolhida.
+        encodings = face_recognition.face_encodings(
+            rgb_frame,
+            [best],
+            num_jitters=max(1, int(num_jitters)),
+            model="large",
+        )
+        if not encodings:
+            return None, None
+
+        encoding = np.asarray(encodings[0], dtype=np.float32)
+        if encoding.size != FACE_ENCODING_DIM:
+            return None, None
+        bbox = (left, top, w, h)
+        return encoding, bbox
 
 
 
 def _face_match(signature):
-    """Match face signature against known faces using euclidean distance."""
+    """Faz matching facial com rejeicao rigorosa de falso-positivo."""
     with _face_lock:
         selected = _face_db.get("selected", "")
         people = dict(_face_db.get("people", {}))
@@ -243,27 +343,117 @@ def _face_match(signature):
         candidates = people
 
     if not candidates:
+        log.debug("[FACE] nenhum candidato no banco (vazio ou selected invalido)")
         return "Desconhecido", None, False
 
+    selected_only_mode = bool(selected and len(candidates) == 1 and selected in candidates)
+
     best_name = "Desconhecido"
-    best_dist = float('inf')
-    
+    best_dist = float("inf")
+    second_dist = float("inf")
+    best_score = float("inf")
+    best_samples_count = 0
+
     for name, samples in candidates.items():
+        dists = []
         for sample in samples:
             vec = np.asarray(sample, dtype=np.float32)
             if vec.shape != signature.shape:
+                # encoding incompativel — precisa re-cadastrar
                 continue
-            # Use euclidean distance (face_recognition standard)
-            dist = float(np.sqrt(np.sum((signature - vec) ** 2)))
-            if dist < best_dist:
-                best_dist = dist
-                best_name = name
+            dist = float(np.linalg.norm(signature - vec))
+            dists.append(dist)
 
-    # FACE_MATCH_THRESHOLD = 0.6 is standard for face_recognition
-    known = best_dist <= FACE_MATCH_THRESHOLD
-    if not known:
-        return "Desconhecido", best_dist, False
-    return best_name, best_dist, True
+        if not dists:
+            log.debug("[FACE] %s: nenhuma amostra compativel (re-cadastre esta pessoa)", name)
+            continue
+
+        dists.sort()
+        top_k = dists[: min(3, len(dists))]
+        person_score = float(np.mean(top_k))
+        person_best = float(dists[0])
+        log.debug("[FACE] candidato '%s': melhor=%.4f score_top3=%.4f (%d amostras)",
+                  name, person_best, person_score, len(dists))
+
+        if person_score < best_score:
+            second_dist = best_dist
+            best_score = person_score
+            best_dist = person_best
+            best_name = name
+            best_samples_count = len(dists)
+        elif person_best < second_dist:
+            second_dist = person_best
+
+    if best_dist == float("inf"):
+        log.debug("[FACE] nenhuma amostra 128-dim encontrada — re-cadastre as pessoas")
+        return "Desconhecido", None, False
+
+    # Regras de aceitação:
+    # 1) Distancia euclidiana abaixo do limiar para o contexto.
+    # 2) Score medio (top-k) tambem precisa estar abaixo.
+    # 3) Diferenca entre 1º e 2º candidato deve ser >= FACE_AMBIGUOUS_MARGIN.
+    # 4) Amostras aumentadas durante cadastro = >= 3 amostras → usa threshold normal.
+    #    Apenas 1 amostra real → threshold mais restritivo.
+    threshold = FACE_MATCH_THRESHOLD
+    if best_samples_count <= 2:          # <=2 amostras = nao passou pela augmentacao
+        threshold = min(threshold, FACE_MATCH_THRESHOLD_SINGLE_SAMPLE)
+    if selected_only_mode:
+        threshold = min(threshold, FACE_MATCH_THRESHOLD_SELECTED_ONLY)
+
+    log.debug("[FACE] threshold=%.3f best_dist=%.4f best_score=%.4f second=%.4f amostras=%d",
+              threshold, best_dist, best_score, second_dist, best_samples_count)
+
+    known = (best_dist <= threshold) and (best_score <= (threshold + 0.04))
+    if known and second_dist < float("inf"):
+        if (second_dist - best_dist) < FACE_AMBIGUOUS_MARGIN:
+            known = False
+            log.debug("[FACE] rejeitado por ambiguidade: margem=%.4f < %.4f",
+                      second_dist - best_dist, FACE_AMBIGUOUS_MARGIN)
+
+    if known:
+        log.info("[FACE] RECONHECIDO: %s (dist=%.4f threshold=%.3f)", best_name, best_dist, threshold)
+    else:
+        log.debug("[FACE] DESCONHECIDO (melhor cand=%s dist=%.4f > threshold=%.3f)",
+                  best_name, best_dist, threshold)
+        best_name = "Desconhecido"
+
+    return best_name, best_dist, known
+
+
+def _face_distance_profile(signature, samples):
+    dists = []
+    for sample in samples:
+        vec = np.asarray(sample, dtype=np.float32)
+        if vec.shape != signature.shape:
+            continue
+        dists.append(float(np.linalg.norm(signature - vec)))
+    if not dists:
+        return None, None
+    dists.sort()
+    top_k = dists[: min(3, len(dists))]
+    return float(dists[0]), float(np.mean(top_k))
+
+
+def _merge_face_samples(existing_samples, new_signatures, max_samples=30, dedup_threshold=0.015):
+    merged = []
+    for sample in existing_samples:
+        vec = np.asarray(sample, dtype=np.float32)
+        if vec.ndim == 1 and vec.size == FACE_ENCODING_DIM:
+            merged.append(vec)
+
+    for signature in new_signatures:
+        sig = np.asarray(signature, dtype=np.float32)
+        if sig.ndim != 1 or sig.size != FACE_ENCODING_DIM:
+            continue
+        duplicate = False
+        for current in merged:
+            if float(np.linalg.norm(sig - current)) <= dedup_threshold:
+                duplicate = True
+                break
+        if not duplicate:
+            merged.append(sig)
+
+    return [vec.tolist() for vec in merged[-max_samples:]]
 
 
 
@@ -278,7 +468,8 @@ def _update_face_runtime(frame_bgr):
     if now < next_scan_at:
         return last
 
-    signature, bbox = _extract_face_signature(frame_bgr)
+    live_frame = _resize_frame_max_dim(frame_bgr, FACE_LIVE_MAX_DIM)
+    signature, bbox = _extract_face_signature(live_frame, num_jitters=1, allow_cnn=False)
     if signature is None:
         result = {
             "label": "Sem rosto",
@@ -315,15 +506,19 @@ def _draw_face_overlay(frame_bgr):
     bbox = info.get("bbox")
     if bbox:
         x, y, w, h = bbox
-        color = (80, 240, 140) if info.get("known") else (75, 120, 255)
+        known = info.get("known")
+        color = (80, 240, 140) if known else (75, 120, 255)
         cv2.rectangle(frame_bgr, (x, y), (x + w, y + h), color, 2)
         label = info.get("label", "--")
+        dist  = info.get("distance")
+        # Mostra nome e distancia: ajuda a diagnosticar falso-positivos
+        dist_txt = f" d={dist:.3f}" if dist is not None else ""
         cv2.putText(
             frame_bgr,
-            label,
+            label + dist_txt,
             (x, max(22, y - 8)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
+            0.60,
             color,
             2,
         )
@@ -486,19 +681,31 @@ def _send_to_arduino(speed, steering, mode, source):
     proto = _arduino_state["protocol"]
     payload = None
 
+    # Speed negativo (tecla S) vira parada segura nesse firmware.
+    speed_cmd = max(-100, min(100, speed_i))
+    steering_cmd = max(-100, min(100, steering_i))
+
+    forward_pct = max(0, speed_cmd)
+    accel = forward_pct * 255 // 100
+
+    # Permite giro no lugar quando A/D esta pressionado sem W/S.
+    if accel == 0 and abs(steering_cmd) >= 20:
+        accel = 100
+
+    # A/D menos agressivo quando esta avancando.
+    steering_gain = 0.70 if accel > 0 else 1.00
+    dir_val = int(steering_cmd * 254 * steering_gain / 100)
+    if abs(dir_val) < 8:
+        dir_val = 0
+
     try:
-        if proto == "csv":
-            payload = f"M,{speed_i},{steering_i}\\n"
-            ser.write(payload.encode("ascii", errors="ignore"))
-        elif proto == "dual":
+        if proto == "dual":
             wasd = _speed_steering_to_wasd(speed_i, steering_i)
-            payload = f"M,{speed_i},{steering_i}|{wasd}|{mode}|{source}"
-            ser.write(f"M,{speed_i},{steering_i}\\n".encode("ascii", errors="ignore"))
-            ser.write(f"{wasd}\\n".encode("ascii", errors="ignore"))
-        else:
-            wasd = _speed_steering_to_wasd(speed_i, steering_i)
-            payload = wasd
-            ser.write(f"{wasd}\\n".encode("ascii", errors="ignore"))
+            payload = f"{accel},{dir_val}|{wasd}|{mode}|{source}"
+            ser.write(f"{accel},{dir_val}\n".encode("ascii", errors="ignore"))
+        else:  # "csv" ou "wasd" — envia formato numerico que o Arduino entende
+            payload = f"{accel},{dir_val}"
+            ser.write(f"{accel},{dir_val}\n".encode("ascii", errors="ignore"))
 
         with _arduino_lock:
             _arduino_state["connected"] = True
@@ -536,6 +743,16 @@ def _tick_fps():
         _fps_t   = now
 
 
+def _touch_kinect_frame():
+    global _kinect_last_frame_ts
+    _kinect_last_frame_ts = time.time()
+    with _lock:
+        _state["kinect_ok"] = True
+        current_error = _state.get("error")
+        if current_error and "kinect" in str(current_error).lower():
+            _state["error"] = None
+
+
 def video_cb(dev, data, timestamp):
     """Chamado pelo runloop para cada frame RGB."""
     global _rgb_n
@@ -546,6 +763,7 @@ def video_cb(dev, data, timestamp):
         with _lock:
             _state["rgb"]       = bgr
             _state["kinect_ok"] = True
+        _touch_kinect_frame()
         _rgb_n += 1
     except Exception as exc:
         log.debug("video_cb: %s", exc)
@@ -603,6 +821,7 @@ def depth_cb(dev, data, timestamp):
             _state["left_clearance_m"] = left_m
             _state["center_clearance_m"] = center_m
             _state["right_clearance_m"] = right_m
+        _touch_kinect_frame()
         _depth_n += 1
     except Exception as exc:
         log.debug("depth_cb: %s", exc)
@@ -708,14 +927,97 @@ def _start_kinect():
                 depth=depth_cb,
                 body=body_cb,
             )
+            log.warning("Kinect: runloop finalizado")
         except Exception as exc:
             log.error("Kinect worker encerrou: %s", exc)
             with _lock:
-                _state["error"] = str(exc)
+                _state["kinect_ok"] = False
+                _state["error"] = f"kinect worker: {exc}"
 
     t = threading.Thread(target=_run, daemon=True, name="kinect-runloop")
     t.start()
     return t
+
+
+def _kinect_num_devices():
+    try:
+        import freenect
+        ctx = freenect.init()
+        n = int(freenect.num_devices(ctx))
+        try:
+            freenect.shutdown(ctx)
+        except Exception:
+            pass
+        return n
+    except Exception:
+        return 0
+
+
+def _restart_kinect(reason):
+    global _running, _init_done, _motor_tested
+    global _kinect_thread, _kinect_last_restart_ts, _kinect_restart_count
+
+    now = time.time()
+    if now - _kinect_last_restart_ts < KINECT_RESTART_COOLDOWN_S:
+        return False
+
+    if _kinect_num_devices() <= 0:
+        with _lock:
+            _state["kinect_ok"] = False
+            _state["error"] = "kinect desconectado: aguardando reconexao USB"
+        return False
+
+    with _lock:
+        _state["kinect_ok"] = False
+        _state["error"] = f"kinect ocupado/bloqueado: {reason}"
+
+    log.warning("Kinect: reiniciando (%s)", reason)
+
+    _running = False
+    time.sleep(0.25)
+    _running = True
+    _init_done = False
+    _motor_tested = False
+
+    with _lock:
+        _state["kinect_ok"] = False
+        _state["error"] = f"kinect reiniciando: {reason}"
+
+    _kinect_thread = _start_kinect()
+    _kinect_last_restart_ts = now
+    _kinect_restart_count += 1
+    return True
+
+
+def _kinect_manager_worker():
+    global _kinect_force_reconnect
+    while _kinect_manager_running:
+        time.sleep(0.7)
+
+        if not _running:
+            continue
+
+        now = time.time()
+        frame_age = None if _kinect_last_frame_ts <= 0 else (now - _kinect_last_frame_ts)
+        stale = frame_age is not None and frame_age > KINECT_STALE_TIMEOUT_S
+        dead = (_kinect_thread is None) or (not _kinect_thread.is_alive())
+
+        force = False
+        with _kinect_lock:
+            if _kinect_force_reconnect:
+                force = True
+                _kinect_force_reconnect = False
+
+        if force:
+            _restart_kinect("solicitacao manual")
+            continue
+
+        if dead:
+            _restart_kinect("thread encerrada")
+            continue
+
+        if stale:
+            _restart_kinect(f"sem frame ha {frame_age:.1f}s")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -797,11 +1099,15 @@ def route_depth_map():
 
 @app.route("/status")
 def route_status():
+    now = time.time()
+    frame_age = None if _kinect_last_frame_ts <= 0 else round(now - _kinect_last_frame_ts, 2)
     with _arduino_lock:
         arduino_snapshot = dict(_arduino_state)
     with _lock:
         return jsonify({
             "kinect_ok":  _state["kinect_ok"],
+            "kinect_last_frame_age_s": frame_age,
+            "kinect_restarts": _kinect_restart_count,
             "motor_ok":   _state["motor_ok"],
             "distance_m": _state["distance_m"],
             "left_clearance_m": _state["left_clearance_m"],
@@ -814,6 +1120,7 @@ def route_status():
             "fps_depth":  _state["fps_depth"],
             "error":      _state["error"],
             "agv":        dict(_agv_control),
+            "autopilot":  dict(_autopilot_state),
             "arduino":    arduino_snapshot,
             "face":       _face_status_snapshot(),
             "runtime":    _runtime_meta_snapshot(),
@@ -823,6 +1130,14 @@ def route_status():
 @app.route("/api/status")
 def route_api_status():
     return route_status()
+
+
+@app.route("/api/kinect/reconnect", methods=["POST"])
+def route_kinect_reconnect():
+    global _kinect_force_reconnect
+    with _kinect_lock:
+        _kinect_force_reconnect = True
+    return jsonify({"ok": True, "requested": True})
 
 
 @app.route("/api/video")
@@ -934,6 +1249,7 @@ def route_faces_mode():
 def route_faces_add():
     name = _safe_ascii_name(request.form.get("name", ""))
     image = request.files.get("image")
+    replace_existing = str(request.form.get("replace", "0")).strip() in ("1", "true", "True", "yes", "on")
     if not name:
         return jsonify({"ok": False, "error": "name_required"}), 400
     if image is None:
@@ -945,15 +1261,61 @@ def route_faces_add():
     if frame is None:
         return jsonify({"ok": False, "error": "invalid_image"}), 400
 
-    signature, _ = _extract_face_signature(frame)
+    # Fotos de celular podem vir muito grandes ou rotacionadas.
+    # Tenta versões redimensionadas e rotações simples para aumentar a taxa de sucesso.
+    signature = None
+    chosen_frame = None
+    for candidate in _registration_frame_variants(frame):
+        signature, _ = _extract_face_signature(candidate, num_jitters=1, allow_cnn=True)
+        if signature is not None:
+            chosen_frame = candidate
+            break
     if signature is None:
         return jsonify({"ok": False, "error": "face_not_detected"}), 400
+    frame = chosen_frame
+
+    # Gera variações (augmentacao) para ter múltiplos exemplos da mesma pessoa.
+    # Isso melhora drasticamente a precisão com uma só foto.
+    new_sigs = [signature]
+    h, w = frame.shape[:2]
+    augment_variants = [
+        # variações de brilho
+        np.clip(frame.astype(np.float32) * 0.75, 0, 255).astype(np.uint8),
+        np.clip(frame.astype(np.float32) * 1.25, 0, 255).astype(np.uint8),
+        # crops leves (mantém rosto centralizado, varia proporção)
+        cv2.resize(frame[int(h * 0.05):int(h * 0.95), 0:w], (w, h)),
+        cv2.resize(frame[0:h, int(w * 0.05):int(w * 0.95)], (w, h)),
+    ]
+    for aug in augment_variants:
+        sig_aug, _ = _extract_face_signature(aug, num_jitters=1, allow_cnn=False)
+        if sig_aug is not None:
+            new_sigs.append(sig_aug)
+
+    log.info("[FACE] cadastro '%s': %d amostra(s) geradas de augmentacao", name, len(new_sigs))
 
     with _face_lock:
         people = _face_db.setdefault("people", {})
-        samples = people.setdefault(name, [])
-        samples.append(signature.tolist())
-        people[name] = samples[-30:]
+        existing_samples = people.get(name, [])
+
+        if replace_existing:
+            existing_samples = []
+
+        # Mesmo nome com foto de outra pessoa: rejeita para nao contaminar o banco.
+        if existing_samples:
+            best_dist, score = _face_distance_profile(signature, existing_samples)
+            strict_threshold = FACE_MATCH_THRESHOLD
+            if best_dist is None or best_dist > strict_threshold or score > (strict_threshold + 0.04):
+                log.warning("[FACE] cadastro rejeitado para '%s': nova imagem nao confere com o cadastro existente (dist=%.4f score=%.4f)",
+                            name, -1.0 if best_dist is None else best_dist, -1.0 if score is None else score)
+                return jsonify({
+                    "ok": False,
+                    "error": "image_does_not_match_existing_person",
+                    "best_distance": best_dist,
+                    "best_score": score,
+                }), 409
+
+        # Para a mesma pessoa, permite reforcar o cadastro com multiplas fotos validas.
+        people[name] = _merge_face_samples(existing_samples, new_sigs)
         _face_db["selected"] = name
         _face_db["enabled"] = True
         _save_face_db()
@@ -986,16 +1348,7 @@ def route_ai_recommend():
     return jsonify({"ok": True, "recommendation": rec})
 
 
-@app.route("/api/ai/apply", methods=["POST"])
-def route_ai_apply():
-    if _brain is None:
-        return jsonify({"ok": False, "error": "brain_not_initialized"}), 503
-
-    with _lock:
-        state_snapshot = dict(_state)
-        state_snapshot["agv"] = dict(_agv_control)
-
-    rec = _brain.recommend(state_snapshot)
+def _compute_ai_command(state_snapshot, rec):
     speed = int(np.clip(rec.get("speed", 0), -100, 100))
     steering = int(np.clip(rec.get("steering", 0), -100, 100))
 
@@ -1011,8 +1364,28 @@ def route_ai_apply():
                 steering = preferred
         rec["side_bias_m"] = side_bias
 
-    if front is not None and front < 0.45:
-        speed = min(speed, -25)
+    # Sem leitura confiavel, para por seguranca.
+    if front is None:
+        speed = 0
+    elif front < 0.45:
+        speed = 0
+        if left is not None and right is not None and abs(right - left) > 0.06:
+            steering = 65 if right > left else -65
+
+    return speed, steering, rec
+
+
+@app.route("/api/ai/apply", methods=["POST"])
+def route_ai_apply():
+    if _brain is None:
+        return jsonify({"ok": False, "error": "brain_not_initialized"}), 503
+
+    with _lock:
+        state_snapshot = dict(_state)
+        state_snapshot["agv"] = dict(_agv_control)
+
+    rec = _brain.recommend(state_snapshot)
+    speed, steering, rec = _compute_ai_command(state_snapshot, rec)
 
     with _lock:
         _agv_control["mode"] = "auto"
@@ -1028,6 +1401,17 @@ def route_ai_apply():
         _brain.record(state_snapshot2, speed=speed, steering=steering, source="ai-apply", reward=0.0)
     except Exception as exc:
         log.warning("brain record ai-apply falhou: %s", exc)
+
+    sent = _send_to_arduino(speed=speed, steering=steering, mode="auto", source="ai-apply")
+    _autopilot_state["last_tick"] = time.time()
+    _autopilot_state["last_error"] = None
+    _autopilot_state["arduino_sent"] = bool(sent)
+    _autopilot_state["last_action"] = {
+        "speed": int(speed),
+        "steering": int(steering),
+        "confidence": rec.get("confidence"),
+        "model_version": rec.get("model_version"),
+    }
 
     return jsonify({"ok": True, "agv": data, "recommendation": rec})
 
@@ -1087,6 +1471,64 @@ def _brain_worker():
                 )
         except Exception as exc:
             log.warning("brain worker falhou: %s", exc)
+
+
+def _autopilot_worker():
+    global _autopilot_running
+
+    loop_s = max(0.08, float(_autopilot_state.get("loop_ms", 180)) / 1000.0)
+    last_record_at = 0.0
+
+    while _autopilot_running:
+        time.sleep(loop_s)
+
+        if not _autopilot_state.get("enabled", True):
+            continue
+        if _brain is None:
+            continue
+
+        with _lock:
+            if _agv_control.get("mode") != "auto":
+                continue
+            state_snapshot = dict(_state)
+            state_snapshot["agv"] = dict(_agv_control)
+
+        try:
+            rec = _brain.recommend(state_snapshot)
+            speed, steering, rec = _compute_ai_command(state_snapshot, rec)
+
+            with _lock:
+                _agv_control["speed"] = int(speed)
+                _agv_control["steering"] = int(steering)
+                _agv_control["updated_at"] = time.time()
+                _agv_control["last_source"] = "ai-auto"
+
+            sent = _send_to_arduino(speed=speed, steering=steering, mode="auto", source="ai-auto")
+
+            _autopilot_state["last_tick"] = time.time()
+            _autopilot_state["last_error"] = None
+            _autopilot_state["arduino_sent"] = bool(sent)
+            _autopilot_state["last_action"] = {
+                "speed": int(speed),
+                "steering": int(steering),
+                "confidence": rec.get("confidence"),
+                "model_version": rec.get("model_version"),
+            }
+
+            now = time.time()
+            if now - last_record_at > 0.8:
+                with _lock:
+                    state_snapshot2 = dict(_state)
+                    state_snapshot2["agv"] = dict(_agv_control)
+                try:
+                    _brain.record(state_snapshot2, speed=speed, steering=steering, source="ai-auto", reward=0.0)
+                except Exception:
+                    pass
+                last_record_at = now
+        except Exception as exc:
+            _autopilot_state["last_tick"] = time.time()
+            _autopilot_state["last_error"] = str(exc)
+            _autopilot_state["arduino_sent"] = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2410,6 +2852,7 @@ _HTML = """<!DOCTYPE html>
                     </div>
                     <div class="head-actions">
                         <button class="ghost" type="button" onclick="hardRefresh()">recarregar pagina</button>
+                        <button class="ghost" type="button" onclick="reconnectKinect()">reconectar kinect</button>
                         <button class="ghost" type="button" onclick="focusTab('drive')">abrir controle</button>
                         <button class="ghost" type="button" onclick="focusTab('intelligence')">abrir reconhecimento</button>
                         <button class="ghost" type="button" onclick="focusTab('intelligence'); openFaceModal();">cadastrar rosto</button>
@@ -2523,6 +2966,8 @@ _HTML = """<!DOCTYPE html>
                             <div class="row"><span class="label">Tilt lido</span><span id="tilt" class="value info mono">--</span></div>
                             <div class="row"><span class="label">Tilt comandado</span><span id="tiltcmd" class="value info mono">--</span></div>
                             <div class="row"><span class="label">Accel X / Y / Z</span><span id="accel" class="value info mono">--</span></div>
+                            <div class="row"><span class="label">Kinect watchdog</span><span id="kinect-watchdog" class="value info mono">--</span></div>
+                            <div class="row"><span class="label">Piloto auto</span><span id="autopilot-live" class="value info mono">--</span></div>
                             <div class="row"><span class="label">Erro do sistema</span><span id="err-msg" class="value err">nenhum</span></div>
                         </div>
                     </article>
@@ -2951,9 +3396,13 @@ _HTML = """<!DOCTYPE html>
             <form id="face-form" class="modal-form">
                 <input id="face-name" name="name" type="text" maxlength="40" placeholder="Nome da pessoa" required>
                 <input id="face-image" name="image" type="file" accept="image/*" required>
+                <label style="display:flex;align-items:center;gap:8px;color:#95b2d9;font-size:13px;">
+                    <input id="face-replace" name="replace" type="checkbox" value="1">
+                    substituir cadastro existente desta pessoa
+                </label>
                 <div class="modal-actions">
                     <button class="ghost" type="button" onclick="closeFaceModal()">cancelar</button>
-                    <button class="action" type="submit">salvar rosto</button>
+                    <button id="face-submit" class="action" type="submit">salvar rosto</button>
                 </div>
             </form>
         </div>
@@ -2987,6 +3436,8 @@ function setHtml(id, value) {
 const keyState = {w:false, a:false, s:false, d:false};
 let driveTimer = null;
 let lastSent = {speed:null, steering:null, mode:null};
+let lastSentAt = 0;
+const CMD_KEEPALIVE_MS = 120;
 let currentMode = "manual";
 let prevDistance = null;
 let lastAiAction = "--";
@@ -3011,9 +3462,9 @@ const minimap = {
 const cfg = {
     forwardBase:55,
     reverseBase:45,
-    turnBase:60,
+    turnBase:45,
     forwardBoost:70,
-    loopMs:90,
+    loopMs:60,
     safeDistance:0.9,
     criticalDistance:0.45
 };
@@ -3093,6 +3544,21 @@ function bindTabs() {
 
 function hardRefresh() {
     window.location.reload(true);
+}
+
+function reconnectKinect() {
+    postJson("/api/kinect/reconnect", {}).then(function(response) {
+        return response.json();
+    }).then(function(payload) {
+        if (payload && payload.ok) {
+            addLog("Reconexao do Kinect solicitada ao backend");
+            showToast("Kinect", "Tentando reconectar o sensor", "info");
+        } else {
+            addLog("Falha ao solicitar reconexao do Kinect");
+        }
+    }).catch(function() {
+        addLog("Erro de rede ao solicitar reconexao do Kinect");
+    });
 }
 
 function updateRuntimeMeta(runtime) {
@@ -3415,7 +3881,13 @@ function updateVector(speed, steering, mode) {
 }
 
 function sendCmd(speed, steering, force) {
-    if (!force && lastSent.speed === speed && lastSent.steering === steering && lastSent.mode === currentMode) {
+    const now = Date.now();
+    const sameCommand = (
+        lastSent.speed === speed &&
+        lastSent.steering === steering &&
+        lastSent.mode === currentMode
+    );
+    if (!force && sameCommand && (now - lastSentAt) < CMD_KEEPALIVE_MS) {
         return;
     }
 
@@ -3429,6 +3901,8 @@ function sendCmd(speed, steering, force) {
         steering:steering,
         source:"site-gamepad"
     });
+
+    lastSentAt = now;
 
     setText("cmd-live", "speed=" + speed + " steering=" + steering);
     updateVector(speed, steering, currentMode);
@@ -3681,6 +4155,15 @@ function updateTelemetry(status) {
     setText("tilt", status.tilt_deg == null ? "--" : status.tilt_deg.toFixed(1) + " deg");
     setText("tiltcmd", (status.tilt_cmd || 0).toFixed(1) + " deg");
     setText("accel", (status.accel || [0, 0, 0]).map(function(value) { return Number(value).toFixed(3); }).join(" / "));
+    const frameAge = status.kinect_last_frame_age_s == null ? "--" : (Number(status.kinect_last_frame_age_s).toFixed(1) + " s");
+    const restarts = Number(status.kinect_restarts || 0);
+    setText("kinect-watchdog", "frame " + frameAge + " | restarts " + restarts);
+
+    const autopilot = status.autopilot || {};
+    const autoSent = autopilot.arduino_sent ? "ok" : "pendente";
+    const autoErr = autopilot.last_error ? " | erro" : "";
+    setText("autopilot-live", "loop " + String(autopilot.loop_ms || "--") + " ms | arduino " + autoSent + autoErr);
+
     setText("side-source", status.agv.last_source || "--");
     setText("source-live", status.agv.last_source || "--");
     setText("err-msg", status.error || "nenhum");
@@ -4061,7 +4544,9 @@ function selectFaceTarget() {
         if (payload && payload.ok) {
             updateFacePanels(payload.face);
             addLog("Pessoa alvo atualizada para: " + (payload.face.selected || "qualquer pessoa"));
+            return;
         }
+        addLog("Falha ao selecionar pessoa: " + ((payload && payload.error) ? payload.error : "erro"));
     }).catch(function() {
         addLog("Falha ao selecionar pessoa");
     });
@@ -4089,6 +4574,8 @@ function bindFaceForm() {
         event.preventDefault();
         const nameInput = document.getElementById("face-name");
         const fileInput = document.getElementById("face-image");
+        const replaceInput = document.getElementById("face-replace");
+        const submitButton = document.getElementById("face-submit");
         if (!nameInput || !fileInput || !fileInput.files || !fileInput.files[0]) {
             addLog("Informe nome e imagem para cadastrar");
             return;
@@ -4096,6 +4583,13 @@ function bindFaceForm() {
         const data = new FormData();
         data.append("name", nameInput.value || "");
         data.append("image", fileInput.files[0]);
+        if (replaceInput && replaceInput.checked) data.append("replace", "1");
+        const originalButtonText = submitButton ? submitButton.textContent : "";
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = "cadastrando...";
+        }
+        addLog("Processando cadastro facial de " + (nameInput.value || "pessoa") + "...");
 
         fetch("/api/faces/add", {method:"POST", body:data}).then(function(response) {
             return response.json();
@@ -4105,7 +4599,8 @@ function bindFaceForm() {
                     name_required:"Informe um nome para a pessoa.",
                     image_required:"Selecione uma imagem para cadastrar.",
                     invalid_image:"A imagem enviada nao pode ser lida.",
-                    face_not_detected:"Nao achei um rosto claro na imagem enviada."
+                    face_not_detected:"Nao achei um rosto claro na imagem enviada.",
+                    image_does_not_match_existing_person:"A foto nao bate com o rosto ja salvo para esse nome. Use a pessoa correta ou limpe o cadastro antes."
                 };
                 const errorCode = payload && payload.error ? payload.error : "erro";
                 const errorText = errorMap[errorCode] || errorCode;
@@ -4118,10 +4613,24 @@ function bindFaceForm() {
             updateFacePanels(payload.face);
             nameInput.value = "";
             fileInput.value = "";
+            if (replaceInput) replaceInput.checked = false;
             closeFaceModal();
         }).catch(function() {
             addLog("Erro de rede no cadastro do rosto");
+        }).finally(function() {
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = originalButtonText || "salvar rosto";
+            }
         });
+    });
+}
+
+function bindFaceSelect() {
+    const select = document.getElementById("face-select");
+    if (!select) return;
+    select.addEventListener("change", function() {
+        selectFaceTarget();
     });
 }
 
@@ -4136,14 +4645,15 @@ function poll() {
         updateHistory(status);
         updateHeuristicPanels(status);
         updateFacePanels(status.face || null);
-        if (Date.now() - lastAiFetchAt > 2200) refreshAiSnapshot(false);
+        const aiPeriod = (status.agv && status.agv.mode === "auto") ? 900 : 2200;
+        if (Date.now() - lastAiFetchAt > aiPeriod) refreshAiSnapshot(false);
     }).catch(function() {
         setText("side-link-status", "offline");
         setText("side-runtime-mode", "offline");
         const linkDot = document.getElementById("side-link-dot");
         if (linkDot) linkDot.className = "status-dot err";
     }).finally(function() {
-        setTimeout(poll, 450);
+        setTimeout(poll, 900);
     });
 }
 
@@ -4152,6 +4662,7 @@ bindConfig();
 bindPadKeys();
 bindFaceModal();
 bindFaceForm();
+bindFaceSelect();
 refreshKeyLights();
 syncModeButtons();
 setText("side-loop", cfg.loopMs + " ms");
@@ -4179,7 +4690,7 @@ if __name__ == "__main__":
         log.warning("face_recognition indisponivel: modulo nao instalado (funcao de faces desativada)")
 
     if _arduino_state["protocol"] not in ("wasd", "csv", "dual"):
-        _arduino_state["protocol"] = "wasd"
+        _arduino_state["protocol"] = "csv"
 
     log.info("=" * 55)
     log.info("  AGV — KINECT v1 COMPLETO")
@@ -4201,7 +4712,9 @@ if __name__ == "__main__":
     _connect_arduino()
 
     # Inicia worker Kinect
-    kinect_thread = _start_kinect()
+    _kinect_thread = _start_kinect()
+    kinect_manager_thread = threading.Thread(target=_kinect_manager_worker, daemon=True, name="kinect-manager")
+    kinect_manager_thread.start()
 
     try:
         _brain = AGVBrain(db_path=AI_DB)
@@ -4212,6 +4725,9 @@ if __name__ == "__main__":
 
     brain_thread = threading.Thread(target=_brain_worker, daemon=True)
     brain_thread.start()
+
+    autopilot_thread = threading.Thread(target=_autopilot_worker, daemon=True, name="autopilot-worker")
+    autopilot_thread.start()
 
     # Aguarda primeiro frame (máximo 20s)
     log.info("Aguardando primeiro frame do Kinect...")
@@ -4247,10 +4763,15 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     finally:
+        _kinect_manager_running = False
+        _autopilot_running = False
         _brain_running = False
         _running = False
-        kinect_thread.join(timeout=3)
+        if _kinect_thread is not None:
+            _kinect_thread.join(timeout=3)
+        kinect_manager_thread.join(timeout=2)
         brain_thread.join(timeout=2)
+        autopilot_thread.join(timeout=2)
         with _arduino_lock:
             ser = _arduino_serial
         if ser is not None:
