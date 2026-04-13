@@ -47,6 +47,19 @@ env = os.environ.copy()
 env["AGV_HOST"] = "0.0.0.0"
 env["AGV_PORT"] = "5000"
 
+# Modo hibrido: usa Python do sistema (com freenect) e injeta pacotes do venv
+# para disponibilizar face_recognition sem depender de build congelada antiga.
+venv_site = Path.home() / "Downloads" / "Detecta_rosto" / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+if venv_site.is_dir():
+    current_pp = env.get("PYTHONPATH", "").strip()
+    env["PYTHONPATH"] = (str(venv_site) + (":" + current_pp if current_pp else ""))
+
+# Thresholds mais restritivos para reduzir falso-positivo.
+env.setdefault("AGV_FACE_MATCH_THRESHOLD", "0.36")
+env.setdefault("AGV_FACE_MATCH_THRESHOLD_SINGLE_SAMPLE", "0.30")
+env.setdefault("AGV_FACE_MATCH_THRESHOLD_SELECTED_ONLY", "0.34")
+env.setdefault("AGV_FACE_AMBIGUOUS_MARGIN", "0.08")
+
 if _is_server_online(URL):
     print("\nServidor já estava online em 5000. Reutilizando processo existente.")
     print(f"Abrindo: {URL}")
