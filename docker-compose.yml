@@ -1,0 +1,33 @@
+services:
+  agv:
+    build: .
+    image: agv-servidor
+    container_name: agv
+
+    # ── Rede ──────────────────────────────────
+    network_mode: host   # expõe a porta 5000 direto na rede local (Wi-Fi)
+
+    # ── Hardware ──────────────────────────────
+    # Passa Arduino (ttyACM0/ttyACM1) e Kinect (USB) para dentro do container.
+    # Ajuste os caminhos se o seu sistema usar nomes diferentes.
+    devices:
+      - /dev/bus/usb:/dev/bus/usb   # Kinect v1 (USB)
+      - /dev/ttyACM0:/dev/ttyACM0   # Arduino (porta padrão)
+
+    # Permissão total a dispositivos USB/serial
+    privileged: true
+
+    # ── Variáveis de ambiente ─────────────────
+    environment:
+      - AGV_HOST=0.0.0.0
+      - AGV_PORT=5000
+      # Descomente para ajustar os loops de controle:
+      # - AGV_CONTROL_LOOP_SECONDS=0.12
+      # - AGV_AUTO_LOOP_SECONDS=0.18
+      # - AGV_CAPTURE_LOOP_SECONDS=0.06
+
+    # ── Logs ──────────────────────────────────
+    volumes:
+      - ./logs:/app/logs
+
+    restart: unless-stopped

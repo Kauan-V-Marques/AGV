@@ -1,7 +1,5 @@
 flask>=3.0
 opencv-python-headless>=4.8
 numpy>=1.24
-face_recognition>=1.3.5
-dlib>=19.24
 pyserial>=3.5
-# freenect é pacote do sistema: sudo apt install python3-freenect
+# freenect e pacote do sistema: sudo apt install python3-freenect

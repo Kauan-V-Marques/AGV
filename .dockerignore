@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Logs sensíveis
+logs/*.npy
+
+# Git
+.git/
+.gitignore
+
+# Documentação extra
+*.md
+
+# Ambiente virtual local
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
