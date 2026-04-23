@@ -1,16 +1,124 @@
 #!/usr/bin/env python3
-"""
-AGV — Launcher de Produção
-Inicia o servidor Kinect e abre o painel no browser.
+"""Launcher principal do AGV.
+
+Sobe o servidor web no mesmo processo e abre o painel no navegador.
+Assim sobra um unico executavel principal para o projeto.
 """
 
 import os
+import atexit
+import fcntl
+import shutil
+import signal
+import subprocess
 import sys
 import time
-import webbrowser
-import subprocess
 import urllib.request
-from pathlib import Path
+import webbrowser
+
+from pc_agv.iniciar_sistema import _release_kinect_usb_claims, create_server
+
+
+HOST = os.environ.get("AGV_HOST", "0.0.0.0").strip() or "0.0.0.0"
+PORT = int(os.environ.get("AGV_PORT", "5000"))
+URL = f"http://127.0.0.1:{PORT}"
+_LOCK_HANDLE = None
+_RUNNING = True
+_SERVER = None
+
+
+def _acquire_single_instance_lock() -> bool:
+    global _LOCK_HANDLE
+
+    lock_path = "/tmp/agv_launch_production.lock"
+    _LOCK_HANDLE = open(lock_path, "w", encoding="utf-8")
+    try:
+        fcntl.flock(_LOCK_HANDLE.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _LOCK_HANDLE.write(str(os.getpid()))
+        _LOCK_HANDLE.flush()
+        return True
+    except OSError:
+        return False
+
+
+def _release_single_instance_lock() -> None:
+    global _LOCK_HANDLE
+
+    if _LOCK_HANDLE is None:
+        return
+    try:
+        fcntl.flock(_LOCK_HANDLE.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+    try:
+        _LOCK_HANDLE.close()
+    except Exception:
+        pass
+    _LOCK_HANDLE = None
+
+
+def _handle_stop_signal(signum, _frame) -> None:
+    global _RUNNING
+
+    _RUNNING = False
+    print(f"\nSinal {signum} recebido. Encerrando AGV...")
+
+
+atexit.register(_release_single_instance_lock)
+
+
+def _ensure_visible_terminal() -> None:
+    # Quando iniciado por clique duplo no Linux, pode rodar sem terminal visivel.
+    # Nesse caso, relanca o proprio executavel dentro de um emulador de terminal.
+    if os.environ.get("AGV_TERMINAL_RELAUNCHED") == "1":
+        return
+    if sys.stdout.isatty() and sys.stdin.isatty():
+        return
+    if not os.environ.get("DISPLAY"):
+        return
+
+    argv = [os.path.abspath(sys.argv[0])] + sys.argv[1:]
+    if not getattr(sys, "frozen", False):
+        argv = [sys.executable] + argv
+
+    env = os.environ.copy()
+    env["AGV_TERMINAL_RELAUNCHED"] = "1"
+
+    candidates = [
+        ["x-terminal-emulator", "-e"] + argv,
+        ["gnome-terminal", "--"] + argv,
+        ["konsole", "-e"] + argv,
+        ["xfce4-terminal", "-e", " ".join(argv)],
+        ["xterm", "-hold", "-e"] + argv,
+    ]
+
+    for cmd in candidates:
+        binary = cmd[0]
+        if shutil.which(binary) is None:
+            continue
+        try:
+            proc = subprocess.Popen(cmd, env=env,
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            time.sleep(0.9)
+            if proc.poll() is not None and proc.returncode != 0:
+                # terminal crashou antes de abrir (ex: gnome-terminal com snap quebrado)
+                continue
+            print("Abrindo terminal para mostrar os logs do AGV...")
+            raise SystemExit(0)
+        except Exception:
+            continue
+
+    # Nenhum terminal funcionou: redirecionar logs para arquivo e continuar no processo atual
+    log_path = "/tmp/agv_production.log"
+    try:
+        log_file = open(log_path, "a", buffering=1, encoding="utf-8")
+        sys.stdout = log_file
+        sys.stderr = log_file
+        print(f"\n=== AGV sem terminal — logs em {log_path} ===")
+    except Exception:
+        pass
+    os.environ["AGV_TERMINAL_RELAUNCHED"] = "1"
 
 
 def _is_server_online(url: str) -> bool:
@@ -21,87 +129,49 @@ def _is_server_online(url: str) -> bool:
         return False
 
 
-def _cleanup_stale_server_processes() -> None:
-    # Evita conflito de porta/Kinect quando existe servidor antigo em segundo plano.
-    patterns = ["iniciar_sistema.py", "/iniciar_sistema"]
-    for pattern in patterns:
-        subprocess.run(
-            ["pkill", "-f", pattern],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-    time.sleep(0.4)
+_ensure_visible_terminal()
 
-ROOT = Path(__file__).parent if not getattr(sys, "frozen", False) else Path(sys.executable).parent
-URL  = "http://127.0.0.1:5000"
+if not _acquire_single_instance_lock():
+    print("Outro AGV ja esta em execucao neste PC.")
+    if _is_server_online(URL):
+        print(f"Abrindo painel existente: {URL}")
+        webbrowser.open(URL)
+        raise SystemExit(0)
+    print("Use Ctrl+C na janela ja aberta para parar o projeto antes de abrir outro.")
+    raise SystemExit(1)
+
+signal.signal(signal.SIGINT, _handle_stop_signal)
+signal.signal(signal.SIGTERM, _handle_stop_signal)
 
 print("=" * 60)
-print("  AGV — KINECT v1  |  RGB + Depth + Motor")
+print("  AGV | Site + Kinect + Arduino")
 print("=" * 60)
 
-# Remove driver gspca_kinect se estiver bloqueando o freenect (sem pedir senha)
-os.system("sudo -n rmmod gspca_kinect >/dev/null 2>&1 || true")
-
-env = os.environ.copy()
-env["AGV_HOST"] = "0.0.0.0"
-env["AGV_PORT"] = "5000"
-
-# Modo hibrido: usa Python do sistema (com freenect) e injeta pacotes do venv
-# para disponibilizar face_recognition sem depender de build congelada antiga.
-venv_site = Path.home() / "Downloads" / "Detecta_rosto" / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-if venv_site.is_dir():
-    current_pp = env.get("PYTHONPATH", "").strip()
-    env["PYTHONPATH"] = (str(venv_site) + (":" + current_pp if current_pp else ""))
-
-# Thresholds mais restritivos para reduzir falso-positivo.
-env.setdefault("AGV_FACE_MATCH_THRESHOLD", "0.36")
-env.setdefault("AGV_FACE_MATCH_THRESHOLD_SINGLE_SAMPLE", "0.30")
-env.setdefault("AGV_FACE_MATCH_THRESHOLD_SELECTED_ONLY", "0.34")
-env.setdefault("AGV_FACE_AMBIGUOUS_MARGIN", "0.08")
+# Remove drivers de kernel que bloqueiam o Kinect via libusb (LIBUSB_ERROR_BUSY)
+_release_kinect_usb_claims()
 
 if _is_server_online(URL):
-    print("\nServidor já estava online em 5000. Reutilizando processo existente.")
+    print("\nServidor ja estava online. Reutilizando processo existente.")
     print(f"Abrindo: {URL}")
     webbrowser.open(URL)
     sys.exit(0)
 
-_cleanup_stale_server_processes()
-
-# ─── Seleciona como iniciar o servidor ───────────────────────────────────────
-# Modo executável (frozen): procura iniciar_sistema na mesma pasta
-# Modo script: usa python3 com o caminho do .py
-_SERVER_EXE = ROOT / "iniciar_sistema"         # executável gerado pelo PyInstaller
-_SERVER_PY  = ROOT / "pc_agv" / "iniciar_sistema.py"
-
-if getattr(sys, "frozen", False) and _SERVER_EXE.is_file():
-    _cmd = [str(_SERVER_EXE)]
-    _cwd = str(ROOT)
-elif _SERVER_PY.is_file():
-    _cmd = [sys.executable, str(_SERVER_PY)]
-    _cwd = str(ROOT / "pc_agv")
-else:
-    print(f"ERRO: servidor não encontrado em {_SERVER_EXE} nem {_SERVER_PY}")
-    sys.exit(1)
-
 print("\nIniciando servidor...")
-proc = subprocess.Popen(_cmd, env=env, cwd=_cwd)
+_SERVER = create_server(host=HOST, port=PORT)
+_SERVER.start()
 
 print("Aguardando servidor responder", end="", flush=True)
-for i in range(25):
+for _ in range(25):
     time.sleep(1)
     print(".", end="", flush=True)
-    if proc.poll() is not None:
-        print("\nServidor encerrou inesperadamente!")
-        sys.exit(1)
     try:
         urllib.request.urlopen(URL + "/api/status", timeout=1)
         break
     except Exception:
         pass
 else:
-    print("\nServidor não respondeu em 25s — verifique o Kinect.")
-    proc.terminate()
+    print("\nServidor nao respondeu em 25s. Verifique o Kinect e a serial.")
+    _SERVER.stop()
     sys.exit(1)
 
 print("\nServidor online!")
@@ -110,13 +180,12 @@ webbrowser.open(URL)
 
 print("\nPressione Ctrl+C para parar.\n")
 try:
-    while True:
+    while _RUNNING:
         time.sleep(1)
-        if proc.poll() is not None:
-            print("Servidor encerrou!")
-            sys.exit(1)
 except KeyboardInterrupt:
+    _RUNNING = False
+finally:
     print("\nEncerrando...")
-    proc.terminate()
-    proc.wait(timeout=5)
+    if _SERVER is not None:
+        _SERVER.stop()
     print("Finalizado.")
