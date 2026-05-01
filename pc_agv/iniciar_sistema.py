@@ -16,6 +16,8 @@ import glob
 import logging
 import math
 import os
+import pickle
+import socket
 import subprocess
 import sys
 import threading
@@ -23,6 +25,7 @@ import time
 from typing import Optional
 
 import cv2
+import face_recognition
 import numpy as np
 from flask import Flask, Response, jsonify, request
 from werkzeug.serving import make_server
@@ -31,6 +34,9 @@ try:
     import freenect  # type: ignore[import-not-found]
 except Exception:
     freenect = None
+
+_face_known_encodings = []
+_face_known_names = []
 
 
 logging.basicConfig(
@@ -48,6 +54,11 @@ DEFAULT_PORT = int(os.environ.get("AGV_PORT", "5000"))
 CONTROL_LOOP_SECONDS = float(os.environ.get("AGV_CONTROL_LOOP_SECONDS", "0.12"))
 AUTO_LOOP_SECONDS = float(os.environ.get("AGV_AUTO_LOOP_SECONDS", "0.18"))
 CAPTURE_LOOP_SECONDS = float(os.environ.get("AGV_CAPTURE_LOOP_SECONDS", "0.06"))
+# Watchdog: para o AGV se nenhum comando manual chegar neste intervalo (0 = desativado)
+WATCHDOG_TIMEOUT_S = float(os.environ.get("AGV_WATCHDOG_TIMEOUT_S", "2.0"))
+# FPS dos streams MJPEG — reduzido para funcionar bem com sinal fraco.
+VIDEO_FPS = int(os.environ.get("AGV_VIDEO_FPS", "6"))
+DEPTH_FPS = int(os.environ.get("AGV_DEPTH_FPS", "4"))
 MIN_FORWARD_PWM = int(os.environ.get("AGV_MIN_FORWARD_PWM", "170"))
 MIN_TURN_PWM = int(os.environ.get("AGV_MIN_TURN_PWM", "140"))
 KINECT_STABILIZATION_ENABLED = os.environ.get("AGV_KINECT_STABILIZATION", "1").strip() == "1"
@@ -63,6 +74,7 @@ FACE_SCAN_INTERVAL = float(os.environ.get("AGV_FACE_SCAN_INTERVAL", "0.7"))
 FACE_KAUAN_THRESHOLD = float(os.environ.get("AGV_FACE_KAUAN_THRESHOLD", "0.20"))
 FACE_DB_DIR = os.path.join(PROJECT_ROOT, "logs")
 FACE_KAUAN_PATH = os.path.join(FACE_DB_DIR, "kauan_face.npy")
+ENCODINGS_FILE = os.path.join(FACE_DB_DIR, "encodings.pkl")
 
 app = Flask(__name__)
 
@@ -163,7 +175,7 @@ _face_runtime = {
   "next_scan_at": 0.0,
   "template_loaded": False,
 }
-_face_kauan_descriptor = None
+descriptor_face = None
 
 
 class AGVServerController:
@@ -191,6 +203,31 @@ def _clamp(value: int, low: int, high: int) -> int:
 
 def _now() -> float:
     return time.time()
+
+
+def _detect_lan_ip() -> str:
+    # Resolve o IP local mais util para outro dispositivo na mesma rede.
+    candidates = []
+
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(("8.8.8.8", 80))
+            candidates.append(probe.getsockname()[0])
+        finally:
+            probe.close()
+    except Exception:
+        pass
+
+    try:
+        candidates.extend(socket.gethostbyname_ex(socket.gethostname())[2])
+    except Exception:
+        pass
+
+    for value in candidates:
+        if value and not value.startswith("127."):
+            return value
+    return "127.0.0.1"
 
 
 def _release_kinect_usb_claims() -> None:
@@ -243,33 +280,55 @@ def _face_extract_primary(gray_frame: np.ndarray):
 
 
 def _load_kauan_face_descriptor() -> None:
-    global _face_kauan_descriptor
+    global _face_known_encodings, _face_known_names
 
-    if not os.path.exists(FACE_KAUAN_PATH):
+    if not os.path.exists(ENCODINGS_FILE):
+        _face_known_encodings = []
+        _face_known_names = []
+
         with _face_lock:
             _face_runtime["template_loaded"] = False
+
+        log.warning("Arquivo de encodings nao encontrado: %s", ENCODINGS_FILE)
         return
+
     try:
-        vec = np.load(FACE_KAUAN_PATH)
-        if vec.ndim != 1:
-            raise ValueError("template invalido")
-        _face_kauan_descriptor = vec.astype(np.float32)
+        with open(ENCODINGS_FILE, "rb") as f:
+            known_encodings, known_names = pickle.load(f)
+
+        # Garante formato correto
+        if not isinstance(known_encodings, list) or not isinstance(known_names, list):
+            raise ValueError("Formato invalido do encodings.pkl")
+
+        _face_known_encodings = [
+            np.array(enc, dtype=np.float32) for enc in known_encodings
+        ]
+        _face_known_names = known_names
+
         with _face_lock:
             _face_runtime["template_loaded"] = True
-        log.info("Face Kauan carregada de %s", FACE_KAUAN_PATH)
+
+        log.info(
+            "Encodings carregados com sucesso (%d faces)",
+            len(_face_known_encodings)
+        )
+
     except Exception as exc:
-        _face_kauan_descriptor = None
+        _face_known_encodings = []
+        _face_known_names = []
+
         with _face_lock:
             _face_runtime["template_loaded"] = False
-        log.warning("Falha ao carregar face do Kauan: %s", exc)
+
+        log.warning("Falha ao carregar encodings: %s", exc)
 
 
 def _save_kauan_face_descriptor(descriptor: np.ndarray) -> None:
-    global _face_kauan_descriptor
+    global descriptor_face
 
     os.makedirs(FACE_DB_DIR, exist_ok=True)
     np.save(FACE_KAUAN_PATH, descriptor.astype(np.float32))
-    _face_kauan_descriptor = descriptor.astype(np.float32)
+    descriptor_face = descriptor.astype(np.float32)
     with _face_lock:
         _face_runtime["template_loaded"] = True
 
@@ -305,8 +364,14 @@ def _update_face_runtime(frame_bgr: np.ndarray) -> np.ndarray:
         label = ""
         distance = None
 
-        if bbox is not None and descriptor is not None and _face_kauan_descriptor is not None:
-            distance = float(np.linalg.norm(descriptor - _face_kauan_descriptor))
+        if (
+            bbox is not None
+            and descriptor is not None
+            and descriptor_face is not None
+            and isinstance(descriptor_face, np.ndarray)
+            and descriptor.shape == descriptor_face.shape
+        ):
+            distance = float(np.linalg.norm(descriptor - descriptor_face))
             if distance <= FACE_KAUAN_THRESHOLD:
                 known = True
                 label = "e o Kauan"
@@ -318,7 +383,7 @@ def _update_face_runtime(frame_bgr: np.ndarray) -> np.ndarray:
             _face_runtime["last_seen_at"] = now if bbox is not None else _face_runtime["last_seen_at"]
             _face_runtime["bbox"] = bbox if known else None
             _face_runtime["next_scan_at"] = now + FACE_SCAN_INTERVAL
-            _face_runtime["template_loaded"] = _face_kauan_descriptor is not None
+            _face_runtime["template_loaded"] = descriptor_face is not None
             if known and now - float(_face_runtime["last_announce_at"]) >= 4.0:
                 log.info("Face reconhecida: e o Kauan")
                 _face_runtime["last_announce_at"] = now
@@ -1023,6 +1088,7 @@ def _control_loop() -> None:
             manual_speed = _control_state["manual_speed"]
             manual_steering = _control_state["manual_steering"]
             source = _control_state["last_source"]
+            updated_at = _control_state["updated_at"]
 
         if mode == "auto":
             with _autopilot_lock:
@@ -1030,9 +1096,15 @@ def _control_loop() -> None:
                 steering = int(_autopilot_state["target_steering"])
             command_source = "autopilot"
         else:
-            speed = manual_speed
-            steering = manual_steering
-            command_source = source
+            # Watchdog: se nenhum novo comando chegou dentro do timeout, para o AGV.
+            if WATCHDOG_TIMEOUT_S > 0 and (_now() - updated_at) > WATCHDOG_TIMEOUT_S:
+                speed = 0
+                steering = 0
+                command_source = "watchdog"
+            else:
+                speed = manual_speed
+                steering = manual_steering
+                command_source = source
 
         sent = _send_to_arduino(speed, steering, mode, command_source)
         error = None
@@ -1140,12 +1212,12 @@ def route_index():
 
 @app.route("/video")
 def route_video():
-    return Response(_mjpeg_generator("rgb", 18), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return Response(_mjpeg_generator("rgb", VIDEO_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/depth_map")
 def route_depth_map():
-    return Response(_mjpeg_generator("depth", 10), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return Response(_mjpeg_generator("depth", DEPTH_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/api/video")
@@ -1161,7 +1233,23 @@ def route_api_depth_map():
 @app.route("/status")
 @app.route("/api/status")
 def route_status():
-    return jsonify(_get_status_snapshot())
+    resp = jsonify(_get_status_snapshot())
+    # Connection: close garante conexao TCP dedicada, sem compartilhar com os streams.
+    resp.headers["Connection"] = "close"
+    return resp
+
+
+@app.route("/api/access_link")
+def route_access_link():
+    lan_ip = _detect_lan_ip()
+    scheme = "https" if request.is_secure else "http"
+    port = request.environ.get("SERVER_PORT", str(DEFAULT_PORT))
+    return jsonify({
+        "ok": True,
+        "url": f"{scheme}://{lan_ip}:{port}/",
+        "ip": lan_ip,
+        "port": port,
+    })
 
 
 @app.route("/api/kinect/reconnect", methods=["POST"])
@@ -1188,29 +1276,98 @@ def route_face_status():
     return jsonify({"ok": True, "face": _face_status_snapshot()})
 
 
-@app.route("/api/face/register_kauan", methods=["POST"])
-def route_face_register_kauan():
+@app.route("/api/face/register_face", methods=["POST"])
+#@app.route("/api/face/register_kauan", methods=["POST"])
+def route_face_register_face():
+
     with _state_lock:
         frame = None if _state["rgb_raw"] is None else _state["rgb_raw"].copy()
 
     if frame is None:
         return jsonify({"ok": False, "error": "no_frame"}), 400
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    bbox, descriptor = _face_extract_primary(gray)
-    if bbox is None or descriptor is None:
+    # =========================
+    # CONVERTE PARA RGB
+    # =========================
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    # =========================
+    # EXTRAI ENCODING (igual ao train)
+    # =========================
+    encodings = face_recognition.face_encodings(rgb)
+
+    if len(encodings) == 0:
         return jsonify({"ok": False, "error": "no_face_detected"}), 400
 
-    _save_kauan_face_descriptor(descriptor)
+    descriptor = encodings[0]
+
+    # =========================
+    # CARREGA BANCO EXISTENTE
+    # =========================
+    if os.path.exists(ENCODINGS_FILE):
+        with open(ENCODINGS_FILE, "rb") as f:
+            known_encodings, known_names = pickle.load(f)
+    else:
+        known_encodings = []
+        known_names = []
+
+    # =========================
+    # REMOVE KAUN ANTIGO (opcional mas recomendado)
+    # =========================
+    filtered_encodings = []
+    filtered_names = []
+
+    for enc, name in zip(known_encodings, known_names):
+        if name.lower() != "kauan":
+            filtered_encodings.append(enc)
+            filtered_names.append(name)
+
+    # =========================
+    # ADICIONA NOVO KAUN
+    # =========================
+    filtered_encodings.append(descriptor)
+    filtered_names.append("kauan")
+
+    os.makedirs(os.path.dirname(ENCODINGS_FILE), exist_ok=True)
+
+    with open(ENCODINGS_FILE, "wb") as f:
+        pickle.dump((filtered_encodings, filtered_names), f)
+
+    # =========================
+    # ATUALIZA RUNTIME
+    # =========================
     with _face_lock:
         _face_runtime["known"] = True
-        _face_runtime["label"] = "e o Kauan"
+        _face_runtime["label"] = "kauan"
         _face_runtime["distance"] = 0.0
         _face_runtime["last_seen_at"] = _now()
-        _face_runtime["bbox"] = bbox
+        _face_runtime["bbox"] = None
         _face_runtime["next_scan_at"] = 0.0
 
     return jsonify({"ok": True, "face": _face_status_snapshot()})
+
+#def route_face_register_face():
+#    with _state_lock:
+#        frame = None if _state["rgb_raw"] is None else _state["rgb_raw"].copy()
+#
+#    if frame is None:
+#        return jsonify({"ok": False, "error": "no_frame"}), 400
+#
+#    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+#    bbox, descriptor = _face_extract_primary(gray)
+#    if bbox is None or descriptor is None:
+#        return jsonify({"ok": False, "error": "no_face_detected"}), 400
+#
+#    _save_kauan_face_descriptor(descriptor)
+#    with _face_lock:
+#        _face_runtime["known"] = True
+#        _face_runtime["label"] = "e o Kauan"
+#        _face_runtime["distance"] = 0.0
+#        _face_runtime["last_seen_at"] = _now()
+#        _face_runtime["bbox"] = bbox
+#        _face_runtime["next_scan_at"] = 0.0
+#
+#    return jsonify({"ok": True, "face": _face_status_snapshot()})
 
 
 @app.route("/api/control", methods=["POST"])
@@ -1240,7 +1397,10 @@ def route_control():
         _control_state["updated_at"] = _now()
         _control_state["last_source"] = source
 
-    return jsonify(_get_status_snapshot())
+    # Resposta minima - Connection: close para nao bloquear pool de conexoes do browser.
+    resp = jsonify({"ok": True})
+    resp.headers["Connection"] = "close"
+    return resp
 
 
 @app.route("/api/settings", methods=["GET", "POST"])
@@ -1272,7 +1432,9 @@ def route_stop():
         _control_state["arduino_sent"] = True
         _control_state["arduino_error"] = None
 
-    return jsonify(_get_status_snapshot())
+    resp = jsonify({"ok": True})
+    resp.headers["Connection"] = "close"
+    return resp
 
 
 def create_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> AGVServerController:
@@ -1381,6 +1543,34 @@ HTML_PAGE = r'''<!doctype html>
       flex-wrap: wrap;
       gap: 10px;
     }
+
+        .access-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: rgba(23, 32, 42, 0.05);
+            border: 1px solid rgba(23, 32, 42, 0.1);
+        }
+
+        .access-link {
+            flex: 1 1 260px;
+            font-family: var(--mono);
+            font-size: 13px;
+            color: var(--muted);
+            word-break: break-all;
+        }
+
+        .copy-link-button {
+            padding: 10px 14px;
+            border-radius: 12px;
+            background: #1f6f5c;
+            font-size: 13px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
 
     .chip {
       padding: 10px 14px;
@@ -1492,6 +1682,61 @@ HTML_PAGE = r'''<!doctype html>
       pointer-events: none;
     }
 
+        .manual-layout {
+            display: grid;
+            gap: 12px;
+        }
+
+        .joystick-wrap {
+            display: grid;
+            justify-items: center;
+            gap: 10px;
+            padding: 8px 0 4px;
+        }
+
+        .joystick-base {
+            width: min(72vw, 280px);
+            aspect-ratio: 1 / 1;
+            border-radius: 50%;
+            position: relative;
+            touch-action: none;
+            background:
+                radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.08)),
+                linear-gradient(150deg, rgba(23, 32, 42, 0.14), rgba(23, 32, 42, 0.06));
+            border: 1px solid rgba(23, 32, 42, 0.14);
+            box-shadow: inset 0 0 0 10px rgba(255, 255, 255, 0.12);
+        }
+
+        .joystick-ring {
+            position: absolute;
+            inset: 12%;
+            border-radius: 50%;
+            border: 2px dashed rgba(23, 32, 42, 0.22);
+            pointer-events: none;
+        }
+
+        .joystick-knob {
+            position: absolute;
+            width: 34%;
+            aspect-ratio: 1 / 1;
+            left: 33%;
+            top: 33%;
+            border-radius: 50%;
+            background: linear-gradient(160deg, #f5f3ef, #d8d0c2);
+            border: 1px solid rgba(23, 32, 42, 0.16);
+            box-shadow: 0 6px 14px rgba(23, 32, 42, 0.24);
+            pointer-events: none;
+            transition: transform 50ms linear;
+        }
+
+        .joystick-readout {
+            font-family: var(--mono);
+            color: var(--muted);
+            font-size: 13px;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
     .telemetry {
       display: grid;
       gap: 10px;
@@ -1550,6 +1795,23 @@ HTML_PAGE = r'''<!doctype html>
       color: var(--ink);
       border-color: rgba(255, 255, 255, 0.12);
     }
+        body.dark .copy-link-button { background: #216e5f; }
+        body.dark .access-row {
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+        body.dark .joystick-base {
+            background:
+                radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.03)),
+                linear-gradient(150deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.02));
+            border-color: rgba(255, 255, 255, 0.14);
+            box-shadow: inset 0 0 0 10px rgba(255, 255, 255, 0.05);
+        }
+        body.dark .joystick-ring { border-color: rgba(255, 255, 255, 0.22); }
+        body.dark .joystick-knob {
+            background: linear-gradient(160deg, #2d333b, #22272e);
+            border-color: rgba(255, 255, 255, 0.16);
+        }
     body.dark button { background: #21262d; }
     body.dark .mode-button[data-mode="manual"] { background: #1a3a2c; }
     body.dark .mode-button[data-mode="auto"] { background: #4a2010; }
@@ -1619,6 +1881,7 @@ HTML_PAGE = r'''<!doctype html>
 <body>
   <main class="shell">
     <section class="hero">
+            <div id="net-banner" hidden style="background:#7a1a1a;color:#fff;border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;letter-spacing:0.03em;text-align:center;"></div>
       <div class="hero-top">
         <div>
           <h1>AGV<br>Basico</h1>
@@ -1631,6 +1894,10 @@ HTML_PAGE = r'''<!doctype html>
           <div class="chip" id="chip-face">face sem cadastro</div>
         </div>
       </div>
+            <div class="access-row">
+                <span class="access-link" id="access-link">Link para outro dispositivo: carregando...</span>
+                <button class="copy-link-button" id="btn-copy-link" type="button">Copiar link</button>
+            </div>
     </section>
 
     <section class="grid">
@@ -1667,15 +1934,24 @@ HTML_PAGE = r'''<!doctype html>
 
         <section class="panel">
           <h2>Controle Manual</h2>
-          <div class="pad">
-            <button class="blank" aria-hidden="true"></button>
-            <button data-key="w">W</button>
-            <button class="blank" aria-hidden="true"></button>
-            <button data-key="a">A</button>
-            <button data-key="s">S</button>
-            <button data-key="d">D</button>
+                    <div class="manual-layout">
+                        <div class="pad" id="keyboard-pad">
+                            <button class="blank" aria-hidden="true"></button>
+                            <button data-key="w">W</button>
+                            <button class="blank" aria-hidden="true"></button>
+                            <button data-key="a">A</button>
+                            <button data-key="s">S</button>
+                            <button data-key="d">D</button>
+                        </div>
+                        <div class="joystick-wrap" id="mobile-joystick" hidden>
+                            <div class="joystick-base" id="joystick-base" aria-label="Controle por stick virtual">
+                                <div class="joystick-ring"></div>
+                                <div class="joystick-knob" id="joystick-knob"></div>
+                            </div>
+                            <div class="joystick-readout" id="joystick-readout">Stick: parado</div>
+                        </div>
           </div>
-          <p class="footer-note">No celular, segure os botoes. No PC, use W A S D, setas ou E como esquerda.</p>
+                    <p class="footer-note" id="control-hint">No celular aparece stick virtual. No PC, use W A S D, setas ou E como esquerda.</p>
         </section>
 
         <section class="panel">
@@ -1722,9 +1998,15 @@ HTML_PAGE = r'''<!doctype html>
     const controlState = {
       mode: "manual",
       pressed: { w: false, a: false, s: false, d: false },
+            mobile: { x: 0, y: 0, active: false },
       lastSpeed: 0,
       lastSteering: 0,
     };
+
+        const uiState = {
+            isMobileControl: false,
+            shareLink: "",
+        };
 
     function fmtMeters(value) {
       return typeof value === "number" ? value.toFixed(2) + " m" : "--";
@@ -1740,6 +2022,15 @@ HTML_PAGE = r'''<!doctype html>
     }
 
     function deriveManualCommand() {
+            if (uiState.isMobileControl) {
+                const deadZone = 0.08;
+                const x = controlState.mobile.x;
+                const y = controlState.mobile.y;
+                const speed = Math.abs(y) < deadZone ? 0 : Math.round(-y * 100);
+                const steering = Math.abs(x) < deadZone ? 0 : Math.round(x * 100);
+                return { speed, steering };
+            }
+
       let speed = 0;
       let steering = 0;
 
@@ -1751,14 +2042,18 @@ HTML_PAGE = r'''<!doctype html>
       return { speed, steering };
     }
 
-    async function postJson(url, payload) {
+    async function postJson(url, payload, signal) {
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload || {}),
+        signal: signal || null,
       });
       return response.json();
     }
+
+    // Cancela qualquer fetch de controle em voo antes de mandar novo.
+    let _controlAbort = null;
 
     async function sendManualCommand(source) {
       if (controlState.mode !== "manual") return;
@@ -1767,15 +2062,25 @@ HTML_PAGE = r'''<!doctype html>
 
       controlState.lastSpeed = next.speed;
       controlState.lastSteering = next.steering;
+
+      // Cancela request anterior que ainda não terminou
+      if (_controlAbort) { try { _controlAbort.abort(); } catch(e) {} }
+      _controlAbort = new AbortController();
+      const signal = _controlAbort.signal;
+
+      // Timeout de 1.5 s para não acumular requests em fila
+      const timeoutId = setTimeout(() => { try { _controlAbort.abort(); } catch(e) {} }, 1500);
       try {
         await postJson("/api/control", {
           mode: "manual",
           speed: next.speed,
           steering: next.steering,
           source: source || "site-manual",
-        });
+        }, signal);
       } catch (error) {
-        console.error(error);
+        if (error.name !== "AbortError") console.error(error);
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
 
@@ -1804,6 +2109,7 @@ HTML_PAGE = r'''<!doctype html>
     }
 
     function setPressed(key, value, source) {
+            if (uiState.isMobileControl) return;
       if (!key) return;
       controlState.pressed[key] = value;
       sendManualCommand(source);
@@ -1815,6 +2121,7 @@ HTML_PAGE = r'''<!doctype html>
     async function emergencyStop() {
       controlState.mode = "manual";
       controlState.pressed = { w: false, a: false, s: false, d: false };
+            controlState.mobile = { x: 0, y: 0, active: false };
       controlState.lastSpeed = 0;
       controlState.lastSteering = 0;
       document.querySelectorAll("[data-key]").forEach((button) => button.classList.remove("is-active"));
@@ -1827,6 +2134,85 @@ HTML_PAGE = r'''<!doctype html>
         console.error(error);
       }
     }
+
+        function detectMobileControl() {
+            const coarsePointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+            const mobileUA = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || "");
+            return coarsePointer || mobileUA;
+        }
+
+        function setupControlSurface() {
+            uiState.isMobileControl = detectMobileControl();
+            const keyboardPad = document.getElementById("keyboard-pad");
+            const mobileJoystick = document.getElementById("mobile-joystick");
+            const hint = document.getElementById("control-hint");
+            keyboardPad.hidden = uiState.isMobileControl;
+            mobileJoystick.hidden = !uiState.isMobileControl;
+            hint.textContent = uiState.isMobileControl
+                ? "Stick virtual ativo. Arraste o centro para mover o AGV e solte para parar."
+                : "No PC, use W A S D, setas ou E como esquerda.";
+            if (uiState.isMobileControl) {
+                controlState.pressed = { w: false, a: false, s: false, d: false };
+                document.querySelectorAll("[data-key]").forEach((button) => button.classList.remove("is-active"));
+            } else {
+                controlState.mobile = { x: 0, y: 0, active: false };
+            }
+            sendManualCommand("site-surface");
+        }
+
+        function renderShareLink() {
+            const label = document.getElementById("access-link");
+            label.textContent = "Link para outro dispositivo: " + (uiState.shareLink || "indisponivel");
+        }
+
+        async function resolveShareLink() {
+            const host = (location.hostname || "").toLowerCase();
+            const loopbackHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+            if (!loopbackHosts.has(host)) {
+                uiState.shareLink = location.origin + "/";
+                renderShareLink();
+                return;
+            }
+
+            try {
+                const response = await fetch("/api/access_link", { cache: "no-store" });
+                const payload = await response.json();
+                uiState.shareLink = payload.url || (location.origin + "/");
+            } catch (error) {
+                console.error(error);
+                uiState.shareLink = location.origin + "/";
+            }
+            renderShareLink();
+        }
+
+        async function copyShareLink() {
+            if (!uiState.shareLink) {
+                await resolveShareLink();
+            }
+            const button = document.getElementById("btn-copy-link");
+            const originalText = button.textContent;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(uiState.shareLink);
+                } else {
+                    const tempInput = document.createElement("textarea");
+                    tempInput.value = uiState.shareLink;
+                    tempInput.style.position = "fixed";
+                    tempInput.style.opacity = "0";
+                    document.body.appendChild(tempInput);
+                    tempInput.select();
+                    document.execCommand("copy");
+                    document.body.removeChild(tempInput);
+                }
+                button.textContent = "Copiado";
+            } catch (error) {
+                console.error(error);
+                button.textContent = "Falhou";
+            }
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 1200);
+        }
 
     async function reconnectKinect() {
       try {
@@ -1850,7 +2236,7 @@ HTML_PAGE = r'''<!doctype html>
 
     async function registerKauanFace() {
       try {
-        const response = await postJson("/api/face/register_kauan", {});
+        const response = await postJson("/api/face/register_face", {});
         if (!response.ok) {
           alert("Nao foi possivel cadastrar o rosto agora. Olhe para a camera e tente de novo.");
           return;
@@ -1902,14 +2288,48 @@ HTML_PAGE = r'''<!doctype html>
     }
 
     async function refreshStatus() {
-      try {
-        const response = await fetch("/api/status", { cache: "no-store" });
-        const snapshot = await response.json();
-        updateTelemetry(snapshot);
-      } catch (error) {
-        console.error(error);
-      }
-    }
+            const t0 = Date.now();
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 2000); // timeout 2s
+            try {
+                const response = await fetch("/api/status", { cache: "no-store", signal: ctrl.signal });
+                const snapshot = await response.json();
+                clearTimeout(tid);
+                const rtt = Date.now() - t0;
+                updateTelemetry(snapshot);
+                _statusFail = 0;
+                // Polling adaptativo: quanto mais rapido o RTT, mais frequente o poll.
+                _statusInterval = rtt < 300 ? 500 : rtt < 800 ? 900 : 1800;
+                _updateNetBanner(rtt);
+            } catch (error) {
+                clearTimeout(tid);
+                _statusFail++;
+                _statusInterval = Math.min(3000, 500 + _statusFail * 500);
+                _updateNetBanner(null);
+                console.warn("status timeout/erro #" + _statusFail);
+            } finally {
+                clearTimeout(_statusTimer);
+                _statusTimer = setTimeout(refreshStatus, _statusInterval);
+            }
+        }
+
+        let _statusInterval = 500;
+        let _statusFail = 0;
+        let _statusTimer = null;
+
+        function _updateNetBanner(rtt) {
+            let banner = document.getElementById("net-banner");
+            if (!banner) return;
+            if (rtt === null || rtt > 800 || _statusFail > 0) {
+                const msg = rtt === null
+                    ? (_statusFail >= 3 ? "⚠ Sem resposta do AGV — verifique o Wi-Fi" : "⚠ Conexão lenta...")
+                    : `⚠ Sinal fraco (${rtt}ms)`;
+                banner.textContent = msg;
+                banner.hidden = false;
+            } else {
+                banner.hidden = true;
+            }
+        }
 
     document.getElementById("btn-manual").addEventListener("click", () => setMode("manual"));
     document.getElementById("btn-auto").addEventListener("click", () => setMode("auto"));
@@ -1919,6 +2339,7 @@ HTML_PAGE = r'''<!doctype html>
     document.getElementById("btn-tilt-center").addEventListener("click", () => sendTilt(0));
     document.getElementById("btn-tilt-down").addEventListener("click", () => sendTilt(-12));
     document.getElementById("btn-face-register").addEventListener("click", registerKauanFace);
+    document.getElementById("btn-copy-link").addEventListener("click", copyShareLink);
 
     document.querySelectorAll("[data-key]").forEach((button) => {
       const key = button.dataset.key;
@@ -1953,12 +2374,93 @@ HTML_PAGE = r'''<!doctype html>
 
     window.addEventListener("blur", () => {
       controlState.pressed = { w: false, a: false, s: false, d: false };
+            controlState.mobile = { x: 0, y: 0, active: false };
       sendManualCommand("site-blur");
       document.querySelectorAll("[data-key]").forEach((button) => button.classList.remove("is-active"));
     });
 
+        const joystickBase = document.getElementById("joystick-base");
+        const joystickKnob = document.getElementById("joystick-knob");
+        const joystickReadout = document.getElementById("joystick-readout");
+        let activePointerId = null;
+        let _stickThrottleAt = 0;   // throttle: evita flood de requests no joystick
+
+        function updateStickVisual(nx, ny) {
+            const max = joystickBase.clientWidth * 0.22;
+            joystickKnob.style.transform = `translate(${(nx * max).toFixed(1)}px, ${(ny * max).toFixed(1)}px)`;
+            const speed = Math.round(-ny * 100);
+            const steering = Math.round(nx * 100);
+            if (Math.abs(speed) < 5 && Math.abs(steering) < 5) {
+                joystickReadout.textContent = "Stick: parado";
+            } else {
+                joystickReadout.textContent = `Stick: vel ${speed} dir ${steering}`;
+            }
+        }
+
+        function updateStickFromPointer(clientX, clientY) {
+            const rect = joystickBase.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const maxRadius = rect.width * 0.32;
+            let dx = clientX - cx;
+            let dy = clientY - cy;
+            const distance = Math.hypot(dx, dy);
+            if (distance > maxRadius) {
+                const scale = maxRadius / distance;
+                dx *= scale;
+                dy *= scale;
+            }
+            const nx = dx / maxRadius;
+            const ny = dy / maxRadius;
+            controlState.mobile = { x: nx, y: ny, active: true };
+            updateStickVisual(nx, ny);
+            // Throttle: envia no máximo 1 request a cada 80 ms
+            const now = Date.now();
+            if (now - _stickThrottleAt >= 80) {
+                _stickThrottleAt = now;
+                sendManualCommand("site-stick");
+            }
+        }
+
+        function resetStick() {
+            controlState.mobile = { x: 0, y: 0, active: false };
+            updateStickVisual(0, 0);
+            sendManualCommand("site-stick-release");
+        }
+
+        joystickBase.addEventListener("pointerdown", (event) => {
+            if (!uiState.isMobileControl) return;
+            event.preventDefault();
+            if (controlState.mode !== "manual") {
+                setMode("manual");
+            }
+            activePointerId = event.pointerId;
+            joystickBase.setPointerCapture(event.pointerId);
+            updateStickFromPointer(event.clientX, event.clientY);
+        });
+
+        joystickBase.addEventListener("pointermove", (event) => {
+            if (!uiState.isMobileControl) return;
+            if (activePointerId !== event.pointerId) return;
+            event.preventDefault();
+            updateStickFromPointer(event.clientX, event.clientY);
+        });
+
+        const onStickRelease = (event) => {
+            if (activePointerId !== event.pointerId) return;
+            activePointerId = null;
+            resetStick();
+        };
+        joystickBase.addEventListener("pointerup", onStickRelease);
+        joystickBase.addEventListener("pointercancel", onStickRelease);
+        joystickBase.addEventListener("pointerleave", onStickRelease);
+
+        setupControlSurface();
+        resolveShareLink();
+        window.addEventListener("resize", setupControlSurface);
+
     refreshStatus();
-    setInterval(refreshStatus, 500);
+    _statusTimer = setTimeout(refreshStatus, 500);
 
     // ── Configuracoes ──────────────────────────────────────────────────
 
