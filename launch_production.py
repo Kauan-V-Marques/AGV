@@ -16,6 +16,30 @@ import time
 import urllib.request
 import webbrowser
 
+
+def _ensure_project_venv_python() -> None:
+    if getattr(sys, "frozen", False):
+        return
+    if os.environ.get("AGV_VENV_REEXEC") == "1":
+        return
+
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    venv_python = os.path.join(project_root, ".venv", "bin", "python")
+    if not os.path.exists(venv_python):
+        return
+
+    current = os.path.realpath(sys.executable)
+    expected = os.path.realpath(venv_python)
+    if current == expected:
+        return
+
+    env = os.environ.copy()
+    env["AGV_VENV_REEXEC"] = "1"
+    os.execve(expected, [expected] + sys.argv, env)
+
+
+_ensure_project_venv_python()
+
 from pc_agv.iniciar_sistema import _release_kinect_usb_claims, create_server
 
 

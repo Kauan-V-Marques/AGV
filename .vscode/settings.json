@@ -2,5 +2,6 @@
   "git.autofetch": true,
   "git.confirmSync": false,
   "git.enableSmartCommit": true,
-  "git.postCommitCommand": "sync"
+  "git.postCommitCommand": "sync",
+  "python-envs.defaultEnvManager": "ms-python.python:system"
 }
