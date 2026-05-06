@@ -12,6 +12,7 @@ Escopo atual:
 """
 
 import atexit
+import select
 import glob
 import logging
 import math
@@ -29,6 +30,7 @@ import face_recognition
 import numpy as np
 from flask import Flask, Response, jsonify, request
 from werkzeug.serving import make_server
+from werkzeug.utils import secure_filename
 
 try:
     import freenect  # type: ignore[import-not-found]
@@ -37,6 +39,8 @@ except Exception:
 
 _face_known_encodings = []
 _face_known_names = []
+_face_known_image_paths = []
+_face_selected_name = ""
 
 
 logging.basicConfig(
@@ -59,21 +63,36 @@ WATCHDOG_TIMEOUT_S = float(os.environ.get("AGV_WATCHDOG_TIMEOUT_S", "2.0"))
 # FPS dos streams MJPEG — reduzido para funcionar bem com sinal fraco.
 VIDEO_FPS = int(os.environ.get("AGV_VIDEO_FPS", "6"))
 DEPTH_FPS = int(os.environ.get("AGV_DEPTH_FPS", "4"))
+ZED_FPS = int(os.environ.get("AGV_ZED_FPS", "60"))
+ZED_WIDTH = int(os.environ.get("AGV_ZED_WIDTH", "640"))
+ZED_HEIGHT = int(os.environ.get("AGV_ZED_HEIGHT", "360"))
+ZED_STREAM_MAX_WIDTH = int(os.environ.get("AGV_ZED_STREAM_MAX_WIDTH", "960"))
+ZED_JPEG_QUALITY = int(os.environ.get("AGV_ZED_JPEG_QUALITY", "60"))
+ZED_DEVICE = os.environ.get("AGV_ZED_DEVICE", "/dev/video0").strip() or "/dev/video0"
+ZED_NAME_HINT = os.environ.get("AGV_ZED_NAME_HINT", "zed").strip().lower() or "zed"
+ZED_STRICT_DEVICE = os.environ.get("AGV_ZED_STRICT_DEVICE", "1").strip() != "0"
+KINECT_RELEASE_UVCVIDEO = os.environ.get("AGV_KINECT_RELEASE_UVCVIDEO", "0").strip() == "1"
 MIN_FORWARD_PWM = int(os.environ.get("AGV_MIN_FORWARD_PWM", "170"))
 MIN_TURN_PWM = int(os.environ.get("AGV_MIN_TURN_PWM", "140"))
 KINECT_STABILIZATION_ENABLED = os.environ.get("AGV_KINECT_STABILIZATION", "1").strip() == "1"
 KINECT_TILT_MIN = float(os.environ.get("AGV_KINECT_TILT_MIN", "-18"))
 KINECT_TILT_MAX = float(os.environ.get("AGV_KINECT_TILT_MAX", "18"))
 KINECT_TILT_INTERVAL = float(os.environ.get("AGV_KINECT_TILT_INTERVAL", "0.5"))
-KINECT_TILT_DEADBAND = float(os.environ.get("AGV_KINECT_TILT_DEADBAND", "1.2"))
+KINECT_TILT_DEADBAND = float(os.environ.get("AGV_KINECT_TILT_DEADBAND", "0.6"))
 KINECT_TILT_NEUTRAL = float(os.environ.get("AGV_KINECT_TILT_NEUTRAL", "0"))
-KINECT_TILT_GAIN = float(os.environ.get("AGV_KINECT_TILT_GAIN", "0.85"))
-KINECT_TILT_SMOOTHING = float(os.environ.get("AGV_KINECT_TILT_SMOOTHING", "0.35"))
+KINECT_TILT_GAIN = float(os.environ.get("AGV_KINECT_TILT_GAIN", "1.20"))
+KINECT_TILT_SMOOTHING = float(os.environ.get("AGV_KINECT_TILT_SMOOTHING", "0.45"))
 KINECT_TILT_MANUAL_HOLD = float(os.environ.get("AGV_KINECT_TILT_MANUAL_HOLD", "2.5"))
+KINECT_TILT_PITCH_DEADBAND = float(os.environ.get("AGV_KINECT_TILT_PITCH_DEADBAND", "0.8"))
+KINECT_TILT_MAX_STEP = float(os.environ.get("AGV_KINECT_TILT_MAX_STEP", "2.5"))
 FACE_SCAN_INTERVAL = float(os.environ.get("AGV_FACE_SCAN_INTERVAL", "0.7"))
-FACE_KAUAN_THRESHOLD = float(os.environ.get("AGV_FACE_KAUAN_THRESHOLD", "0.20"))
+FACE_MATCH_THRESHOLD = float(os.environ.get("AGV_FACE_MATCH_THRESHOLD", "0.665"))
+FACE_IMPOSTOR_MARGIN = float(os.environ.get("AGV_FACE_IMPOSTOR_MARGIN", "0.05"))
+FACE_SELECTED_MAX_DISTANCE = float(os.environ.get("AGV_FACE_SELECTED_MAX_DISTANCE", "0.52"))
+FACE_DETECT_MODEL = os.environ.get("AGV_FACE_DETECT_MODEL", "hog").strip().lower() or "hog"
+FACE_SCAN_MAX_WIDTH = int(os.environ.get("AGV_FACE_SCAN_MAX_WIDTH", "640"))
 FACE_DB_DIR = os.path.join(PROJECT_ROOT, "logs")
-FACE_KAUAN_PATH = os.path.join(FACE_DB_DIR, "kauan_face.npy")
+FACE_UPLOADS_DIR = os.path.join(FACE_DB_DIR, "faces")
 ENCODINGS_FILE = os.path.join(FACE_DB_DIR, "encodings.pkl")
 
 app = Flask(__name__)
@@ -87,6 +106,8 @@ _state_lock = threading.Lock()
 _state = {
     "rgb": None,
   "rgb_raw": None,
+        "zed": None,
+    "zed_device": ZED_DEVICE,
     "depth": None,
     "depth_mm": False,
     "distance_m": None,
@@ -98,9 +119,13 @@ _state = {
   "accel": [0.0, 0.0, 0.0],
     "fps_rgb": 0.0,
     "fps_depth": 0.0,
+    "fps_zed": 0.0,
     "kinect_ok": False,
     "kinect_error": None,
     "last_frame_at": 0.0,
+    "zed_ok": False,
+    "zed_error": None,
+    "zed_last_frame_at": 0.0,
 }
 
 _control_lock = threading.Lock()
@@ -155,6 +180,9 @@ _tilt_last_set_at = 0.0
 _tilt_last_target = 0.0
 _tilt_manual_until = 0.0
 _tilt_manual_target = 0.0
+_tilt_pitch_filtered = 0.0
+
+_tilt_control_lock = threading.Lock()
 
 _settings_lock = threading.Lock()
 _settings = {
@@ -174,8 +202,20 @@ _face_runtime = {
   "bbox": None,
   "next_scan_at": 0.0,
   "template_loaded": False,
+    "selected_name": "",
 }
-descriptor_face = None
+
+_zed_face_lock = threading.Lock()
+_zed_face_event = threading.Event()
+_zed_face_state = {
+    "pending": False,
+    "frame": None,
+    "next_scan_at": 0.0,
+    "known": False,
+    "label": "",
+    "distance": None,
+    "bbox": None,
+}
 
 
 class AGVServerController:
@@ -232,17 +272,18 @@ def _detect_lan_ip() -> str:
 
 def _release_kinect_usb_claims() -> None:
     """Libera drivers do kernel que costumam prender o Kinect no Linux."""
+    base_modules = ["gspca_kinect", "gspca_main", "snd_usb_audio"]
+    if KINECT_RELEASE_UVCVIDEO:
+        base_modules.extend(["uvcvideo", "videobuf2_v4l2", "videobuf2_vmalloc", "videobuf2_common", "videodev", "mc"])
+
     commands = [
-        [
-            "sudo", "-n", "modprobe", "-r",
-            "gspca_kinect", "gspca_main", "uvcvideo", "snd_usb_audio",
-            "videobuf2_v4l2", "videobuf2_vmalloc", "videobuf2_common", "videodev", "mc",
-        ],
+        ["sudo", "-n", "modprobe", "-r", *base_modules],
         ["sudo", "-n", "rmmod", "gspca_kinect"],
         ["sudo", "-n", "rmmod", "gspca_main"],
-        ["sudo", "-n", "rmmod", "uvcvideo"],
         ["sudo", "-n", "rmmod", "snd_usb_audio"],
     ]
+    if KINECT_RELEASE_UVCVIDEO:
+        commands.append(["sudo", "-n", "rmmod", "uvcvideo"])
     for cmd in commands:
         try:
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
@@ -281,56 +322,129 @@ def _face_extract_primary(gray_frame: np.ndarray):
 
 def _load_kauan_face_descriptor() -> None:
     global _face_known_encodings, _face_known_names
+def _normalize_face_name(name: str) -> str:
+    normalized = " ".join(str(name or "").strip().split())
+    return normalized[:60]
 
+
+def _face_name_slug(name: str) -> str:
+    slug = secure_filename(name).strip("._").lower()
+    return slug or "rosto"
+
+
+def _load_face_database() -> tuple[list[np.ndarray], list[str], list[Optional[str]]]:
     if not os.path.exists(ENCODINGS_FILE):
-        _face_known_encodings = []
-        _face_known_names = []
+        raise FileNotFoundError(ENCODINGS_FILE)
 
-        with _face_lock:
-            _face_runtime["template_loaded"] = False
+    with open(ENCODINGS_FILE, "rb") as f:
+        payload = pickle.load(f)
 
-        log.warning("Arquivo de encodings nao encontrado: %s", ENCODINGS_FILE)
-        return
+    if not isinstance(payload, tuple):
+        raise ValueError("Formato invalido do encodings.pkl")
+
+    if len(payload) == 2:
+        known_encodings, known_names = payload
+        known_image_paths = [None] * len(known_names)
+    elif len(payload) == 3:
+        known_encodings, known_names, known_image_paths = payload
+    else:
+        raise ValueError("Formato invalido do encodings.pkl")
+
+    if not isinstance(known_encodings, list) or not isinstance(known_names, list) or not isinstance(known_image_paths, list):
+        raise ValueError("Formato invalido do encodings.pkl")
+    if len(known_encodings) != len(known_names) or len(known_names) != len(known_image_paths):
+        raise ValueError("Banco de rostos inconsistente")
+
+    return (
+        [np.array(enc, dtype=np.float32) for enc in known_encodings],
+        [_normalize_face_name(name) for name in known_names],
+        [path if path else None for path in known_image_paths],
+    )
+
+
+def _save_face_database(encodings: list[np.ndarray], names: list[str], image_paths: list[Optional[str]]) -> None:
+    os.makedirs(FACE_DB_DIR, exist_ok=True)
+    with open(ENCODINGS_FILE, "wb") as f:
+        pickle.dump((encodings, names, image_paths), f)
+
+
+def _load_known_faces() -> None:
+    global _face_known_encodings, _face_known_names, _face_known_image_paths, _face_selected_name
 
     try:
-        with open(ENCODINGS_FILE, "rb") as f:
-            known_encodings, known_names = pickle.load(f)
-
-        # Garante formato correto
-        if not isinstance(known_encodings, list) or not isinstance(known_names, list):
-            raise ValueError("Formato invalido do encodings.pkl")
-
-        _face_known_encodings = [
-            np.array(enc, dtype=np.float32) for enc in known_encodings
-        ]
+        known_encodings, known_names, known_image_paths = _load_face_database()
+        _face_known_encodings = known_encodings
         _face_known_names = known_names
+        _face_known_image_paths = known_image_paths
 
         with _face_lock:
-            _face_runtime["template_loaded"] = True
+            if _face_selected_name and _face_selected_name not in _face_known_names:
+                _face_selected_name = ""
+            _face_runtime["template_loaded"] = bool(_face_known_names)
+            _face_runtime["selected_name"] = _face_selected_name
 
-        log.info(
-            "Encodings carregados com sucesso (%d faces)",
-            len(_face_known_encodings)
-        )
-
+        log.info("Encodings carregados com sucesso (%d faces)", len(_face_known_encodings))
+    except FileNotFoundError:
+        _face_known_encodings = []
+        _face_known_names = []
+        _face_known_image_paths = []
+        with _face_lock:
+            _face_runtime["template_loaded"] = False
+            _face_runtime["selected_name"] = ""
+        log.warning("Arquivo de encodings nao encontrado: %s", ENCODINGS_FILE)
     except Exception as exc:
         _face_known_encodings = []
         _face_known_names = []
-
+        _face_known_image_paths = []
         with _face_lock:
             _face_runtime["template_loaded"] = False
-
+            _face_runtime["selected_name"] = ""
         log.warning("Falha ao carregar encodings: %s", exc)
 
 
-def _save_kauan_face_descriptor(descriptor: np.ndarray) -> None:
-    global descriptor_face
+def _set_selected_face(name: str) -> tuple[bool, str]:
+    global _face_selected_name
 
-    os.makedirs(FACE_DB_DIR, exist_ok=True)
-    np.save(FACE_KAUAN_PATH, descriptor.astype(np.float32))
-    descriptor_face = descriptor.astype(np.float32)
+    selected_name = _normalize_face_name(name)
     with _face_lock:
-        _face_runtime["template_loaded"] = True
+        if not selected_name:
+            _face_selected_name = ""
+            _face_runtime["known"] = False
+            _face_runtime["label"] = ""
+            _face_runtime["distance"] = None
+            _face_runtime["bbox"] = None
+            _face_runtime["next_scan_at"] = 0.0
+            _face_runtime["selected_name"] = ""
+            return True, "nenhum rosto selecionado"
+
+        if selected_name not in _face_known_names:
+            return False, "rosto nao encontrado"
+
+        _face_selected_name = selected_name
+        _face_runtime["known"] = False
+        _face_runtime["label"] = ""
+        _face_runtime["distance"] = None
+        _face_runtime["bbox"] = None
+        _face_runtime["next_scan_at"] = 0.0
+        _face_runtime["selected_name"] = selected_name
+        return True, "rosto selecionado"
+
+
+def _selected_face_encoding() -> tuple[str, Optional[np.ndarray]]:
+    with _face_lock:
+        selected_name = str(_face_selected_name)
+        known_names = list(_face_known_names)
+        known_encodings = list(_face_known_encodings)
+
+    if not selected_name:
+        return "", None
+
+    try:
+        index = known_names.index(selected_name)
+    except ValueError:
+        return selected_name, None
+
+    return selected_name, np.array(known_encodings[index], dtype=np.float32)
 
 
 def _face_status_snapshot() -> dict:
@@ -341,40 +455,94 @@ def _face_status_snapshot() -> dict:
             "distance": _face_runtime["distance"],
             "last_seen_at": float(_face_runtime["last_seen_at"]),
             "template_loaded": bool(_face_runtime["template_loaded"]),
+            "selected_name": str(_face_runtime["selected_name"]),
+            "names": list(_face_known_names),
         }
 
 
 def _update_face_runtime(frame_bgr: np.ndarray) -> np.ndarray:
     now = _now()
+    selected_name, selected_encoding = _selected_face_encoding()
+
     with _face_lock:
-        if now < float(_face_runtime["next_scan_at"]):
+        cached_bbox = None
+        known = False
+        label = ""
+        if (
+            selected_name
+            and selected_encoding is not None
+            and now < float(_face_runtime["next_scan_at"])
+            and str(_face_runtime["selected_name"]) == selected_name
+        ):
             cached_bbox = _face_runtime["bbox"]
             known = bool(_face_runtime["known"])
             label = str(_face_runtime["label"])
-        else:
-            cached_bbox = None
-            known = False
-            label = ""
+
+    if not selected_name or selected_encoding is None:
+        with _face_lock:
+            _face_runtime["known"] = False
+            _face_runtime["label"] = ""
+            _face_runtime["distance"] = None
+            _face_runtime["bbox"] = None
+            _face_runtime["selected_name"] = selected_name
+            _face_runtime["template_loaded"] = bool(_face_known_names)
+        return frame_bgr
 
     if cached_bbox is None:
-        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        bbox, descriptor = _face_extract_primary(gray)
-
         known = False
         label = ""
         distance = None
+        bbox = None
 
-        if (
-            bbox is not None
-            and descriptor is not None
-            and descriptor_face is not None
-            and isinstance(descriptor_face, np.ndarray)
-            and descriptor.shape == descriptor_face.shape
-        ):
-            distance = float(np.linalg.norm(descriptor - descriptor_face))
-            if distance <= FACE_KAUAN_THRESHOLD:
-                known = True
-                label = "e o Kauan"
+        try:
+            # ZED e camera estereo: usa metade esquerda (672x376) em vez de
+            # reduzir 0.5x o frame completo (resultaria em 672x188, muito achatado).
+            h, w = frame_bgr.shape[:2]
+            scan_frame = frame_bgr[:, : w // 2] if w > 700 else frame_bgr
+
+            scan_h, scan_w = scan_frame.shape[:2]
+            if scan_w > max(64, FACE_SCAN_MAX_WIDTH):
+                scale = float(FACE_SCAN_MAX_WIDTH) / float(scan_w)
+                resized_w = int(scan_w * scale)
+                resized_h = int(scan_h * scale)
+                frame_for_face = cv2.resize(scan_frame, (resized_w, resized_h), interpolation=cv2.INTER_AREA)
+                scale_x = float(scan_w) / float(resized_w)
+                scale_y = float(scan_h) / float(resized_h)
+            else:
+                frame_for_face = scan_frame
+                scale_x = 1.0
+                scale_y = 1.0
+
+            rgb_small = cv2.cvtColor(frame_for_face, cv2.COLOR_BGR2RGB)
+            model = "cnn" if FACE_DETECT_MODEL == "cnn" else "hog"
+            face_locations = face_recognition.face_locations(rgb_small, model=model)
+            face_encodings = face_recognition.face_encodings(rgb_small, face_locations)
+
+            best_distance = None
+            best_bbox = None
+            for (top, right, bottom, left), encoding in zip(face_locations, face_encodings):
+                current_distance = float(np.linalg.norm(np.array(encoding, dtype=np.float32) - selected_encoding))
+                if best_distance is None or current_distance < best_distance:
+                    best_distance = current_distance
+                    left_px = int(left * scale_x)
+                    top_px = int(top * scale_y)
+                    right_px = int(right * scale_x)
+                    bottom_px = int(bottom * scale_y)
+                    best_bbox = (
+                        left_px,
+                        top_px,
+                        max(1, right_px - left_px),
+                        max(1, bottom_px - top_px),
+                    )
+
+            if best_distance is not None:
+                distance = best_distance
+                if best_distance <= FACE_MATCH_THRESHOLD:
+                    known = True
+                    label = selected_name
+                    bbox = best_bbox
+        except Exception as exc:
+            log.warning("Falha na deteccao facial da ZED: %s", exc)
 
         with _face_lock:
             _face_runtime["known"] = known
@@ -383,9 +551,10 @@ def _update_face_runtime(frame_bgr: np.ndarray) -> np.ndarray:
             _face_runtime["last_seen_at"] = now if bbox is not None else _face_runtime["last_seen_at"]
             _face_runtime["bbox"] = bbox if known else None
             _face_runtime["next_scan_at"] = now + FACE_SCAN_INTERVAL
-            _face_runtime["template_loaded"] = descriptor_face is not None
+            _face_runtime["template_loaded"] = bool(_face_known_names)
+            _face_runtime["selected_name"] = selected_name
             if known and now - float(_face_runtime["last_announce_at"]) >= 4.0:
-                log.info("Face reconhecida: e o Kauan")
+                log.info("Face reconhecida na ZED: %s", selected_name)
                 _face_runtime["last_announce_at"] = now
             cached_bbox = _face_runtime["bbox"]
             known = bool(_face_runtime["known"])
@@ -406,16 +575,161 @@ def _update_face_runtime(frame_bgr: np.ndarray) -> np.ndarray:
     return frame_bgr
 
 
+def _detect_selected_face_on_frame(
+    frame_bgr: np.ndarray,
+    selected_name: str,
+    known_names: list[str],
+    known_encodings: list[np.ndarray],
+) -> tuple[bool, str, Optional[float], Optional[tuple[int, int, int, int]]]:
+    known = False
+    label = ""
+    distance = None
+    bbox = None
+
+    h, w = frame_bgr.shape[:2]
+    scan_frame = frame_bgr[:, : w // 2] if w > 700 else frame_bgr
+
+    scan_h, scan_w = scan_frame.shape[:2]
+    if scan_w > max(64, FACE_SCAN_MAX_WIDTH):
+        scale = float(FACE_SCAN_MAX_WIDTH) / float(scan_w)
+        resized_w = int(scan_w * scale)
+        resized_h = int(scan_h * scale)
+        frame_for_face = cv2.resize(scan_frame, (resized_w, resized_h), interpolation=cv2.INTER_AREA)
+        scale_x = float(scan_w) / float(resized_w)
+        scale_y = float(scan_h) / float(resized_h)
+    else:
+        frame_for_face = scan_frame
+        scale_x = 1.0
+        scale_y = 1.0
+
+    rgb_small = cv2.cvtColor(frame_for_face, cv2.COLOR_BGR2RGB)
+    model = "cnn" if FACE_DETECT_MODEL == "cnn" else "hog"
+    face_locations = face_recognition.face_locations(rgb_small, model=model)
+    face_encodings = face_recognition.face_encodings(rgb_small, face_locations)
+
+    try:
+        selected_idx = known_names.index(selected_name)
+    except ValueError:
+        return False, "", None, None
+
+    strict_threshold = min(FACE_MATCH_THRESHOLD, FACE_SELECTED_MAX_DISTANCE)
+
+    best_selected_distance = None
+    best_bbox = None
+
+    for (top, right, bottom, left), encoding in zip(face_locations, face_encodings):
+        probe = np.array(encoding, dtype=np.float32)
+        all_distances = [float(np.linalg.norm(probe - np.array(ref, dtype=np.float32))) for ref in known_encodings]
+        if not all_distances:
+            continue
+
+        selected_distance = all_distances[selected_idx]
+        others = [dist for idx, dist in enumerate(all_distances) if idx != selected_idx]
+        best_other_distance = min(others) if others else 999.0
+        best_distance = min(all_distances)
+
+        is_selected_best = selected_distance <= (best_distance + 1e-9)
+        has_margin = (best_other_distance - selected_distance) >= FACE_IMPOSTOR_MARGIN
+        is_valid = (
+            selected_distance <= strict_threshold
+            and is_selected_best
+            and has_margin
+        )
+
+        if not is_valid:
+            continue
+
+        if best_selected_distance is None or selected_distance < best_selected_distance:
+            best_selected_distance = selected_distance
+            left_px = int(left * scale_x)
+            top_px = int(top * scale_y)
+            right_px = int(right * scale_x)
+            bottom_px = int(bottom * scale_y)
+            best_bbox = (
+                left_px,
+                top_px,
+                max(1, right_px - left_px),
+                max(1, bottom_px - top_px),
+            )
+
+    if best_selected_distance is not None and best_bbox is not None:
+        distance = best_selected_distance
+        known = True
+        label = selected_name
+        bbox = best_bbox
+
+    return known, label, distance, bbox
+
+
+def _zed_face_worker_loop() -> None:
+    while not _stop_event.is_set():
+        _zed_face_event.wait(timeout=0.15)
+        _zed_face_event.clear()
+
+        with _zed_face_lock:
+            frame = _zed_face_state["frame"]
+            pending = bool(_zed_face_state["pending"])
+            _zed_face_state["frame"] = None
+
+        if not pending or frame is None:
+            continue
+
+        now = _now()
+        selected_name, selected_encoding = _selected_face_encoding()
+        with _face_lock:
+            known_names = list(_face_known_names)
+            known_encodings = [np.array(enc, dtype=np.float32) for enc in _face_known_encodings]
+
+        known = False
+        label = ""
+        distance = None
+        bbox = None
+
+        if selected_name and selected_encoding is not None and known_names and known_encodings:
+            try:
+                known, label, distance, bbox = _detect_selected_face_on_frame(
+                    frame,
+                    selected_name,
+                    known_names,
+                    known_encodings,
+                )
+            except Exception as exc:
+                log.warning("Falha na deteccao facial da ZED: %s", exc)
+
+        with _face_lock:
+            _face_runtime["known"] = known
+            _face_runtime["label"] = label
+            _face_runtime["distance"] = distance
+            _face_runtime["bbox"] = bbox if known else None
+            _face_runtime["next_scan_at"] = now + FACE_SCAN_INTERVAL
+            _face_runtime["template_loaded"] = bool(_face_known_names)
+            _face_runtime["selected_name"] = selected_name
+            if bbox is not None:
+                _face_runtime["last_seen_at"] = now
+            if known and now - float(_face_runtime["last_announce_at"]) >= 4.0:
+                log.info("Face reconhecida na ZED: %s", selected_name)
+                _face_runtime["last_announce_at"] = now
+
+        with _zed_face_lock:
+            _zed_face_state["pending"] = False
+            _zed_face_state["known"] = known
+            _zed_face_state["label"] = label
+            _zed_face_state["distance"] = distance
+            _zed_face_state["bbox"] = bbox if known else None
+            _zed_face_state["next_scan_at"] = now + FACE_SCAN_INTERVAL
+
+
 def _compute_tilt_target(ax: float, ay: float, az: float) -> float:
+    # Kinect v1: eixo X do acelerometro acompanha bem o "pitch" do tilt.
     gravity = math.sqrt((ax * ax) + (ay * ay) + (az * az))
     if gravity < 1e-6:
         return float(max(KINECT_TILT_MIN, min(KINECT_TILT_MAX, KINECT_TILT_NEUTRAL)))
 
-    dominant_pitch = math.degrees(math.atan2(ax, max(1e-6, abs(az))))
-    if abs(ay) > abs(ax):
-        dominant_pitch = math.degrees(math.atan2(ay, max(1e-6, abs(az))))
+    pitch_deg = math.degrees(math.atan2(ax, max(1e-6, abs(az))))
+    if abs(pitch_deg) < KINECT_TILT_PITCH_DEADBAND:
+        pitch_deg = 0.0
 
-    requested = KINECT_TILT_NEUTRAL - (dominant_pitch * KINECT_TILT_GAIN)
+    requested = KINECT_TILT_NEUTRAL - (pitch_deg * KINECT_TILT_GAIN)
     return float(max(KINECT_TILT_MIN, min(KINECT_TILT_MAX, requested)))
 
 
@@ -430,14 +744,41 @@ def _command_kinect_tilt(angle: float) -> tuple[bool, str, Optional[float]]:
 
     with _state_lock:
         _state["tilt_target_deg"] = round(target, 2)
-    return True, "comando enviado", target
+
+    # Quando disponivel, envia comando imediato sem depender do callback do video.
+    # Isso melhora o feedback dos botoes Tilt +/- no painel.
+    direct_sent = False
+    if freenect is not None:
+        try:
+            if hasattr(freenect, "sync_set_tilt_degs"):
+                freenect.sync_set_tilt_degs(int(round(target)))
+                direct_sent = True
+        except Exception:
+            direct_sent = False
+
+    message = "tilt aplicado" if direct_sent else "comando enviado"
+    return True, message, target
+
+
+def _set_kinect_stabilization(enabled: bool) -> bool:
+    global KINECT_STABILIZATION_ENABLED
+    with _tilt_control_lock:
+        KINECT_STABILIZATION_ENABLED = bool(enabled)
+    return KINECT_STABILIZATION_ENABLED
+
+
+def _get_kinect_stabilization() -> bool:
+    with _tilt_control_lock:
+        return bool(KINECT_STABILIZATION_ENABLED)
 
 
 def _do_tilt_body(dev) -> None:
     """Ajusta o tilt do Kinect para manter o frame mais nivelado."""
-    global _tilt_last_set_at, _tilt_last_target, _tilt_manual_until, _tilt_manual_target
+    global _tilt_last_set_at, _tilt_last_target, _tilt_manual_until, _tilt_manual_target, _tilt_pitch_filtered
 
-    if not KINECT_STABILIZATION_ENABLED:
+    stabilization_enabled = _get_kinect_stabilization()
+    # Mesmo com estabilizacao OFF, respeita comando manual recente de tilt.
+    if (not stabilization_enabled) and (_now() >= _tilt_manual_until):
         return
 
     now = _now()
@@ -452,17 +793,32 @@ def _do_tilt_body(dev) -> None:
         accel = freenect.get_mks_accel(tilt_state)
         ax, ay, az = float(accel[0]), float(accel[1]), float(accel[2])
 
-        if now < _tilt_manual_until:
+        manual_tilt_active = now < _tilt_manual_until
+        if manual_tilt_active:
             target_f = _tilt_manual_target
-        else:
-            target_f = _compute_tilt_target(ax, ay, az)
+        elif stabilization_enabled:
+            # Filtro leve no acelerometro para reduzir jitter de leitura.
+            measured_pitch = math.degrees(math.atan2(ax, max(1e-6, abs(az))))
+            _tilt_pitch_filtered = (_tilt_pitch_filtered * 0.70) + (measured_pitch * 0.30)
+            target_f = _compute_tilt_target(_tilt_pitch_filtered, ay, az)
             alpha = max(0.0, min(1.0, KINECT_TILT_SMOOTHING))
             if alpha > 0.0:
                 target_f = (_tilt_last_target * (1.0 - alpha)) + (target_f * alpha)
+        else:
+            target_f = raw_tilt
 
         target_f = float(max(KINECT_TILT_MIN, min(KINECT_TILT_MAX, target_f)))
 
-        if abs(raw_tilt - target_f) >= KINECT_TILT_DEADBAND:
+        # Limita passo apenas na estabilizacao automatica.
+        if not manual_tilt_active:
+            step = float(max(0.2, KINECT_TILT_MAX_STEP))
+            if target_f > raw_tilt + step:
+                target_f = raw_tilt + step
+            elif target_f < raw_tilt - step:
+                target_f = raw_tilt - step
+
+        command_deadband = 0.2 if manual_tilt_active else KINECT_TILT_DEADBAND
+        if abs(raw_tilt - target_f) >= command_deadband:
             freenect.set_tilt_degs(dev, int(round(target_f)))
         _tilt_last_target = target_f
 
@@ -854,6 +1210,359 @@ def _kinect_device_available() -> tuple[bool, Optional[str]]:
                 pass
 
 
+def _zed_source_value(source_raw: str):
+    value = str(source_raw or "").strip()
+    if value.isdigit():
+        return int(value)
+    return value or 0
+
+
+def _zed_nodes_from_sysfs() -> list[str]:
+    """Detecta nodes ZED pelo sysfs. Tenta varios nomes: zed, stereolabs, usb video, ou qualquer device USB."""
+    nodes = []
+    for name_path in sorted(glob.glob("/sys/class/video4linux/video*/name")):
+        try:
+            card_name = open(name_path, "r", encoding="utf-8", errors="ignore").read().strip().lower()
+        except Exception:
+            continue
+        
+        # Tenta match por ZED_NAME_HINT ou por pattern STEREOLABS ou USB generico
+        is_match = (
+            (ZED_NAME_HINT and ZED_NAME_HINT in card_name) or
+            "stereolabs" in card_name or
+            "stereo" in card_name or
+            ("usb" in card_name and "video" in card_name)
+        )
+        if not is_match:
+            continue
+
+        video_node = os.path.basename(os.path.dirname(name_path))
+        node_path = f"/dev/{video_node}"
+        if os.path.exists(node_path):
+            nodes.append(node_path)
+            log.info("ZED device detectado via sysfs: %s (%s)", node_path, card_name)
+    return nodes
+
+
+def _zed_candidate_sources() -> list:
+    candidates = []
+    preferred_raw = str(ZED_DEVICE or "").strip()
+    preferred = _zed_source_value(preferred_raw)
+    if preferred_raw:
+        candidates.append(preferred)
+
+    for node in _zed_nodes_from_sysfs():
+        if node not in candidates:
+            candidates.append(node)
+
+    if not ZED_STRICT_DEVICE:
+        for path in sorted(glob.glob("/dev/video*")):
+            if path not in candidates:
+                candidates.append(path)
+
+    dedup = []
+    seen = set()
+    for source in candidates:
+        key = str(source)
+        if key in seen:
+            continue
+        seen.add(key)
+        dedup.append(source)
+    return dedup
+
+
+def _open_zed_capture(source) -> tuple[Optional[subprocess.Popen], Optional[str]]:
+    """Abre stream de video ZED via FFmpeg (OpenCV nao consegue abrir device v4l2)."""
+    if not isinstance(source, str) or not source.startswith("/dev/video"):
+        return None, "source invalido"
+    
+    try:
+        if not os.path.exists(source):
+            return None, f"device {source} nao existe"
+        
+        base_prefix = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "error",
+            "-fflags", "nobuffer",
+            "-flags", "low_delay",
+            "-probesize", "32",
+            "-analyzeduration", "0",
+            "-f", "v4l2",
+            "-thread_queue_size", "32",
+            "-video_size", f"{ZED_WIDTH}x{ZED_HEIGHT}",
+            "-framerate", str(ZED_FPS),
+        ]
+
+        variants = [
+            {
+                "name": "mjpeg-copy",
+                "cmd": base_prefix
+                + [
+                    "-input_format", "mjpeg",
+                    "-i", source,
+                    "-an", "-sn", "-dn",
+                    "-fflags", "flush_packets",
+                    "-f", "mjpeg",
+                    "-c:v", "copy",
+                    "-",
+                ],
+            },
+            {
+                "name": "yuyv-encode",
+                "cmd": base_prefix
+                + [
+                    "-input_format", "yuyv422",
+                    "-i", source,
+                    "-an", "-sn", "-dn",
+                    "-fflags", "flush_packets",
+                    "-vsync", "drop",
+                    "-f", "image2pipe",
+                    "-c:v", "mjpeg",
+                    "-q:v", "3",
+                    "-",
+                ],
+            },
+        ]
+
+        last_err = ""
+        for variant in variants:
+            proc = subprocess.Popen(
+                variant["cmd"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+            )
+
+            time.sleep(0.25)
+            if proc.poll() is None:
+                log.info(
+                    "FFmpeg stream aberto: %s (%dx%d @ %d fps, %s)",
+                    source,
+                    ZED_WIDTH,
+                    ZED_HEIGHT,
+                    ZED_FPS,
+                    variant["name"],
+                )
+                return proc, None
+
+            try:
+                proc.communicate(timeout=0.4)
+            except Exception:
+                pass
+            last_err = f"variant {variant['name']} falhou"
+
+        return None, f"ffmpeg falhou: {last_err or 'unknown'}"
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _open_zed_cv_capture(source) -> tuple[Optional[cv2.VideoCapture], Optional[str]]:
+    if not isinstance(source, str) or not source.startswith("/dev/video"):
+        return None, "source invalido"
+    if not os.path.exists(source):
+        return None, f"device {source} nao existe"
+
+    try:
+        cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
+        if not cap.isOpened():
+            cap.release()
+            return None, "falha ao abrir com OpenCV/V4L2"
+
+        fourcc = cv2.VideoWriter_fourcc(*"YUYV")
+        cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, float(ZED_WIDTH))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, float(ZED_HEIGHT))
+        cap.set(cv2.CAP_PROP_FPS, float(ZED_FPS))
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        actual_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        log.info(
+            "OpenCV stream aberto: %s (%dx%d @ %.1f fps)",
+            source,
+            actual_w,
+            actual_h,
+            actual_fps,
+        )
+        return cap, None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _read_frame_from_ffmpeg(
+    proc: subprocess.Popen,
+    carry: bytes,
+    timeout_s: float = 0.35,
+) -> tuple[Optional[np.ndarray], bytes]:
+    """Le o frame mais recente do pipe FFmpeg, descartando backlog para reduzir latencia."""
+    if not proc or proc.poll() is not None:
+        return None, b""
+
+    stream = proc.stdout
+    if stream is None:
+        return None, b""
+    
+    frame_data = carry
+    deadline = _now() + timeout_s
+    
+    try:
+        while _now() < deadline:
+            wait = max(0.0, deadline - _now())
+            readable, _, _ = select.select([stream], [], [], wait)
+            if not readable:
+                break
+
+            chunk = stream.read(65536)
+            if not chunk:
+                return None, frame_data
+            
+            frame_data += chunk
+
+            # Mantem apenas uma janela recente para evitar crescimento sem limite.
+            if len(frame_data) > 4_000_000:
+                frame_data = frame_data[-4_000_000:]
+            
+            if b"\xff\xd9" in frame_data:
+                end_idx = frame_data.rfind(b"\xff\xd9") + 2
+                start_idx = frame_data.rfind(b"\xff\xd8", 0, end_idx)
+                
+                if start_idx >= 0:
+                    jpeg_bytes = frame_data[start_idx:end_idx]
+                    remaining = frame_data[end_idx:]
+                    frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        return frame, remaining
+                    frame_data = remaining
+    except Exception:
+        pass
+    
+    return None, frame_data
+
+
+def _zed_capture_loop() -> None:
+    fps_counter = 0
+    fps_mark = _now()
+    failed_until: dict[str, float] = {}
+
+    while not _stop_event.is_set():
+        proc = None
+        cap = None
+        pipe_carry = b""
+        try:
+            selected_source = None
+            last_error = None
+
+            for candidate in _zed_candidate_sources():
+                candidate_key = str(candidate)
+                if float(failed_until.get(candidate_key, 0.0)) > _now():
+                    continue
+
+                cap, open_error = _open_zed_cv_capture(candidate)
+                if cap is not None:
+                    selected_source = candidate
+                    break
+
+                proc, open_error = _open_zed_capture(candidate)
+                if proc is not None:
+                    selected_source = candidate
+                    break
+
+                last_error = open_error
+                failed_until[candidate_key] = _now() + 20.0
+
+            if cap is None and proc is None:
+                with _state_lock:
+                    _state["zed_ok"] = False
+                    _state["zed_error"] = f"nao abriu webcam ZED ({last_error or 'sem detalhe'})"
+                _stop_event.wait(2.0)
+                continue
+
+            with _state_lock:
+                _state["zed_ok"] = True
+                _state["zed_error"] = None
+                _state["zed_device"] = str(selected_source)
+
+            while not _stop_event.is_set():
+                if cap is not None:
+                    ok, frame = cap.read()
+                    if not ok or frame is None:
+                        frame = None
+                else:
+                    frame, pipe_carry = _read_frame_from_ffmpeg(proc, pipe_carry)
+
+                if frame is None:
+                    with _state_lock:
+                        _state["zed_ok"] = False
+                        _state["zed_error"] = f"falha de leitura da webcam ZED em {selected_source}"
+                    failed_until[str(selected_source)] = _now() + 20.0
+                    break
+
+                now = _now()
+                with _zed_face_lock:
+                    should_queue = (not bool(_zed_face_state["pending"])) and (now >= float(_zed_face_state["next_scan_at"]))
+                    if should_queue:
+                        _zed_face_state["pending"] = True
+                        _zed_face_state["frame"] = frame.copy()
+                        _zed_face_event.set()
+                    known = bool(_zed_face_state["known"])
+                    label = str(_zed_face_state["label"])
+                    bbox = _zed_face_state["bbox"]
+
+                annotated_frame = frame
+                if known and bbox is not None:
+                    x, y, bw, bh = bbox
+                    cv2.rectangle(annotated_frame, (x, y), (x + bw, y + bh), (80, 230, 120), 2)
+                    cv2.putText(
+                        annotated_frame,
+                        label,
+                        (x, max(18, y - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.65,
+                        (80, 230, 120),
+                        2,
+                    )
+
+                with _state_lock:
+                    if isinstance(frame, np.ndarray) and frame.size > 0:
+                        _state["zed"] = annotated_frame
+                        _state["zed_ok"] = True
+                        _state["zed_error"] = None
+                        _state["zed_last_frame_at"] = _now()
+
+                fps_counter += 1
+                now = _now()
+                elapsed = now - fps_mark
+                if elapsed >= 1.0:
+                    with _state_lock:
+                        _state["fps_zed"] = round(fps_counter / elapsed, 1)
+                    fps_counter = 0
+                    fps_mark = now
+
+                _stop_event.wait(max(0.001, 1.0 / max(1, ZED_FPS)))
+        except Exception as exc:
+            with _state_lock:
+                _state["zed_ok"] = False
+                _state["zed_error"] = f"erro na webcam ZED: {exc}"
+            _stop_event.wait(2.0)
+        finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+            if proc is not None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=1)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+
+
 def _get_status_snapshot() -> dict:
     with _state_lock:
         state = {
@@ -889,6 +1598,8 @@ def _get_status_snapshot() -> dict:
 
     last_frame_at = state["last_frame_at"]
     state["frame_age_s"] = None if last_frame_at <= 0 else round(_now() - last_frame_at, 2)
+    zed_last_frame_at = float(_state["zed_last_frame_at"])
+    zed_frame_age = None if zed_last_frame_at <= 0 else round(_now() - zed_last_frame_at, 2)
 
     return {
         "ok": True,
@@ -896,6 +1607,16 @@ def _get_status_snapshot() -> dict:
         "agv": control,
         "autopilot": autopilot,
         "arduino": arduino,
+        "kinect": {
+            "stabilization_enabled": _get_kinect_stabilization(),
+        },
+        "zed": {
+            "online": bool(_state["zed_ok"]),
+            "error": _state["zed_error"],
+            "fps": float(_state["fps_zed"]),
+            "frame_age_s": zed_frame_age,
+            "device": _state.get("zed_device") or ZED_DEVICE,
+        },
         "face": _face_status_snapshot(),
         "settings": dict(_settings),
         "runtime": {
@@ -940,10 +1661,9 @@ def _capture_loop() -> None:
                 _raw_state["depth_fresh"] = False
 
             if rgb is not None:
-                frame_bgr = _update_face_runtime(rgb.copy())
                 with _state_lock:
                     _state["rgb_raw"] = rgb
-                    _state["rgb"] = frame_bgr
+                    _state["rgb"] = rgb
                     _state["kinect_ok"] = True
                     _state["kinect_error"] = None
                     _state["last_frame_at"] = _now()
@@ -1129,10 +1849,12 @@ def start_runtime() -> None:
             return
         _runtime_started = True
         _stop_event.clear()
-        _load_kauan_face_descriptor()
+        _load_known_faces()
 
         specs = [
             ("agv-kinect", _capture_loop),
+            ("agv-zed-face", _zed_face_worker_loop),
+            ("agv-zed", _zed_capture_loop),
             ("agv-autopilot", _autopilot_loop),
             ("agv-control", _control_loop),
         ]
@@ -1169,6 +1891,7 @@ atexit.register(stop_runtime)
 def _mjpeg_generator(kind: str, fps: int):
     interval = 1.0 / max(1, fps)
     while True:
+        quality = 82
         if kind == "rgb":
             with _state_lock:
                 frame = None if _state["rgb"] is None else _state["rgb"].copy()
@@ -1177,7 +1900,7 @@ def _mjpeg_generator(kind: str, fps: int):
                 frame = _placeholder_frame("Aguardando Kinect RGB")
                 if error:
                     cv2.putText(frame, error[:44], (40, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 180, 255), 2)
-        else:
+        elif kind == "depth":
             with _state_lock:
                 depth = None if _state["depth"] is None else _state["depth"].copy()
                 is_mm = bool(_state["depth_mm"])
@@ -1188,8 +1911,23 @@ def _mjpeg_generator(kind: str, fps: int):
                     cv2.putText(frame, error[:44], (40, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 180, 255), 2)
             else:
                 frame = _depth_to_colormap(depth, is_mm)
+        else:
+            with _state_lock:
+                frame = None if _state["zed"] is None else _state["zed"].copy()
+                error = _state["zed_error"]
+            if frame is None:
+                frame = _placeholder_frame("Aguardando webcam ZED")
+                if error:
+                    cv2.putText(frame, error[:44], (40, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 180, 255), 2)
+            else:
+                h, w = frame.shape[:2]
+                if ZED_STREAM_MAX_WIDTH > 0 and w > ZED_STREAM_MAX_WIDTH:
+                    target_w = int(ZED_STREAM_MAX_WIDTH)
+                    target_h = max(2, int((h * target_w) / max(1, w)))
+                    frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
+            quality = _clamp(ZED_JPEG_QUALITY, 35, 95)
 
-        data = _encode_jpeg(frame)
+        data = _encode_jpeg(frame, quality=quality)
         if data is not None:
             yield (
                 b"--frame\r\n"
@@ -1220,6 +1958,11 @@ def route_depth_map():
     return Response(_mjpeg_generator("depth", DEPTH_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
+@app.route("/zed")
+def route_zed():
+    return Response(_mjpeg_generator("zed", ZED_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
 @app.route("/api/video")
 def route_api_video():
     return route_video()
@@ -1228,6 +1971,11 @@ def route_api_video():
 @app.route("/api/depth_map")
 def route_api_depth_map():
     return route_depth_map()
+
+
+@app.route("/api/zed")
+def route_api_zed():
+    return route_zed()
 
 
 @app.route("/status")
@@ -1271,80 +2019,95 @@ def route_kinect_tilt():
     return jsonify({"ok": ok, "message": message, "tilt_target_deg": applied})
 
 
+@app.route("/api/kinect/stabilization", methods=["GET", "POST"])
+def route_kinect_stabilization():
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        enabled = bool(payload.get("enabled", True))
+        applied = _set_kinect_stabilization(enabled)
+        return jsonify({"ok": True, "enabled": applied})
+
+    return jsonify({"ok": True, "enabled": _get_kinect_stabilization()})
+
+
 @app.route("/api/face/status")
 def route_face_status():
     return jsonify({"ok": True, "face": _face_status_snapshot()})
 
 
 @app.route("/api/face/register_face", methods=["POST"])
-#@app.route("/api/face/register_kauan", methods=["POST"])
 def route_face_register_face():
+    face_name = _normalize_face_name(request.form.get("name", ""))
+    image_file = request.files.get("image")
 
-    with _state_lock:
-        frame = None if _state["rgb_raw"] is None else _state["rgb_raw"].copy()
+    if not face_name:
+        return jsonify({"ok": False, "error": "name_required"}), 400
+    if image_file is None or not image_file.filename:
+        return jsonify({"ok": False, "error": "image_required"}), 400
 
+    image_bytes = image_file.read()
+    if not image_bytes:
+        return jsonify({"ok": False, "error": "empty_image"}), 400
+
+    frame = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
     if frame is None:
-        return jsonify({"ok": False, "error": "no_frame"}), 400
+        return jsonify({"ok": False, "error": "invalid_image"}), 400
 
-    # =========================
-    # CONVERTE PARA RGB
-    # =========================
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    # =========================
-    # EXTRAI ENCODING (igual ao train)
-    # =========================
     encodings = face_recognition.face_encodings(rgb)
-
     if len(encodings) == 0:
         return jsonify({"ok": False, "error": "no_face_detected"}), 400
 
-    descriptor = encodings[0]
+    descriptor = np.array(encodings[0], dtype=np.float32)
+    extension = os.path.splitext(image_file.filename or "")[1].lower()
+    if extension not in (".jpg", ".jpeg", ".png", ".bmp", ".webp"):
+        extension = ".jpg"
 
-    # =========================
-    # CARREGA BANCO EXISTENTE
-    # =========================
-    if os.path.exists(ENCODINGS_FILE):
-        with open(ENCODINGS_FILE, "rb") as f:
-            known_encodings, known_names = pickle.load(f)
+    os.makedirs(FACE_UPLOADS_DIR, exist_ok=True)
+    stored_path = os.path.join(FACE_UPLOADS_DIR, f"{_face_name_slug(face_name)}{extension}")
+    if not cv2.imwrite(stored_path, frame):
+        return jsonify({"ok": False, "error": "failed_to_save_image"}), 500
+
+    try:
+        known_encodings, known_names, known_image_paths = _load_face_database()
+    except Exception:
+        known_encodings, known_names, known_image_paths = [], [], []
+
+    target_index = None
+    face_name_lower = face_name.lower()
+    for index, existing_name in enumerate(known_names):
+        if str(existing_name).lower() == face_name_lower:
+            target_index = index
+            break
+
+    project_image_path = os.path.relpath(stored_path, PROJECT_ROOT)
+    if target_index is None:
+        known_encodings.append(descriptor)
+        known_names.append(face_name)
+        known_image_paths.append(project_image_path)
     else:
-        known_encodings = []
-        known_names = []
+        known_encodings[target_index] = descriptor
+        known_names[target_index] = face_name
+        known_image_paths[target_index] = project_image_path
 
-    # =========================
-    # REMOVE KAUN ANTIGO (opcional mas recomendado)
-    # =========================
-    filtered_encodings = []
-    filtered_names = []
+    _save_face_database(known_encodings, known_names, known_image_paths)
+    _load_known_faces()
+    _set_selected_face(face_name)
 
-    for enc, name in zip(known_encodings, known_names):
-        if name.lower() != "kauan":
-            filtered_encodings.append(enc)
-            filtered_names.append(name)
+    return jsonify({
+        "ok": True,
+        "name": face_name,
+        "image_path": project_image_path,
+        "face": _face_status_snapshot(),
+    })
 
-    # =========================
-    # ADICIONA NOVO KAUN
-    # =========================
-    filtered_encodings.append(descriptor)
-    filtered_names.append("kauan")
 
-    os.makedirs(os.path.dirname(ENCODINGS_FILE), exist_ok=True)
-
-    with open(ENCODINGS_FILE, "wb") as f:
-        pickle.dump((filtered_encodings, filtered_names), f)
-
-    # =========================
-    # ATUALIZA RUNTIME
-    # =========================
-    with _face_lock:
-        _face_runtime["known"] = True
-        _face_runtime["label"] = "kauan"
-        _face_runtime["distance"] = 0.0
-        _face_runtime["last_seen_at"] = _now()
-        _face_runtime["bbox"] = None
-        _face_runtime["next_scan_at"] = 0.0
-
-    return jsonify({"ok": True, "face": _face_status_snapshot()})
+@app.route("/api/face/select", methods=["POST"])
+def route_face_select():
+    payload = request.get_json(silent=True) or {}
+    ok, message = _set_selected_face(str(payload.get("name", "")))
+    status_code = 200 if ok else 404
+    return jsonify({"ok": ok, "message": message, "face": _face_status_snapshot()}), status_code
 
 #def route_face_register_face():
 #    with _state_lock:
@@ -1763,6 +2526,52 @@ HTML_PAGE = r'''<!doctype html>
       line-height: 1.5;
     }
 
+        .face-tools {
+            display: grid;
+            gap: 12px;
+        }
+
+        .face-field {
+            display: grid;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .face-field span {
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .face-field input,
+        .face-field select {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 11px 12px;
+            font: inherit;
+            color: var(--ink);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .face-field input[type=file] {
+            padding: 9px 12px;
+        }
+
+        .face-register-button {
+            background: #7d4d16;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 700;
+        }
+
+        .face-helper {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
     @media (max-width: 1100px) {
       .grid { grid-template-columns: 1fr; }
     }
@@ -1816,6 +2625,12 @@ HTML_PAGE = r'''<!doctype html>
     body.dark .mode-button[data-mode="manual"] { background: #1a3a2c; }
     body.dark .mode-button[data-mode="auto"] { background: #4a2010; }
     body.dark .stop-button { background: var(--danger); }
+        body.dark .face-field input,
+        body.dark .face-field select {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--ink);
+        }
+        body.dark .face-register-button { background: #8b5a1d; }
 
     /* Toggle switch */
     .toggle-switch {
@@ -1890,6 +2705,7 @@ HTML_PAGE = r'''<!doctype html>
         <div class="chips">
           <div class="chip" id="chip-mode">modo manual</div>
           <div class="chip" id="chip-kinect">kinect offline</div>
+                    <div class="chip" id="chip-zed">zed offline</div>
           <div class="chip" id="chip-serial">serial desconectada</div>
           <div class="chip" id="chip-face">face sem cadastro</div>
         </div>
@@ -1913,6 +2729,12 @@ HTML_PAGE = r'''<!doctype html>
           <img class="stream" src="/depth_map" alt="Mapa de profundidade do Kinect">
           <div class="caption">Mapa de distancia usado no modo autonomo.</div>
         </article>
+
+                <article class="panel">
+                    <h2>Webcam ZED</h2>
+                    <img class="stream" src="/zed" alt="Video da webcam ZED">
+                    <div class="caption">Camera extra para monitorar a traseira do AGV.</div>
+                </article>
       </div>
 
       <div class="side">
@@ -1924,13 +2746,35 @@ HTML_PAGE = r'''<!doctype html>
           </div>
           <div class="action-row" style="margin-top:10px;">
             <button id="btn-reconnect">Reconectar Kinect</button>
+                        <button id="btn-stabilization">Estabilizacao ON</button>
             <button id="btn-tilt-up">Tilt +</button>
             <button id="btn-tilt-center">Centralizar</button>
             <button id="btn-tilt-down">Tilt -</button>
-            <button id="btn-face-register">Registrar Kauan</button>
             <button class="stop-button" id="btn-stop">Parada total</button>
           </div>
         </section>
+
+                <section class="panel">
+                    <h2>Rostos</h2>
+                    <div class="face-tools">
+                        <label class="face-field">
+                            <span>Pessoa para procurar na ZED</span>
+                            <select id="face-select">
+                                <option value="">Nenhuma pessoa selecionada</option>
+                            </select>
+                        </label>
+                        <label class="face-field">
+                            <span>Nome do rosto</span>
+                            <input id="face-name-input" type="text" maxlength="60" placeholder="Ex.: Kauan">
+                        </label>
+                        <label class="face-field">
+                            <span>Imagem para cadastro</span>
+                            <input id="face-file-input" type="file" accept="image/*">
+                        </label>
+                        <button class="face-register-button" id="btn-face-register" type="button">Registrar rosto</button>
+                        <p class="face-helper" id="face-form-status">Escolha uma pessoa no seletor. O quadrado so aparece na ZED quando o rosto escolhido for encontrado.</p>
+                    </div>
+                </section>
 
         <section class="panel">
           <h2>Controle Manual</h2>
@@ -1964,6 +2808,7 @@ HTML_PAGE = r'''<!doctype html>
             <div class="metric"><span>Comando ativo</span><strong id="active-command">--</strong></div>
             <div class="metric"><span>Autonomo</span><strong id="auto-reason">--</strong></div>
             <div class="metric"><span>Kinect</span><strong id="kinect-status">--</strong></div>
+            <div class="metric"><span>Webcam ZED</span><strong id="zed-status">--</strong></div>
             <div class="metric"><span>Arduino</span><strong id="serial-status">--</strong></div>
             <div class="metric"><span>Face</span><strong id="face-status">--</strong></div>
             <div class="metric"><span>FPS</span><strong id="fps-status">--</strong></div>
@@ -2006,7 +2851,59 @@ HTML_PAGE = r'''<!doctype html>
         const uiState = {
             isMobileControl: false,
             shareLink: "",
+            selectedFaceName: "",
+            knownFaces: [],
+                        faceBeepArmed: true,
+                        faceLastLabel: "",
+                        audioReady: false,
+                        audioContext: null,
         };
+
+        function ensureAudioReady() {
+            if (uiState.audioReady) return;
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            try {
+                uiState.audioContext = new AudioCtx();
+                uiState.audioReady = true;
+            } catch (error) {
+                console.warn("AudioContext indisponivel", error);
+            }
+        }
+
+        function playFaceBeep() {
+            if (!uiState.audioReady || !uiState.audioContext) return;
+            try {
+                const ctx = uiState.audioContext;
+                if (ctx.state === "suspended") {
+                    ctx.resume().catch(() => {});
+                }
+                const now = ctx.currentTime;
+                const master = ctx.createGain();
+                master.gain.setValueAtTime(0.0001, now);
+                master.gain.exponentialRampToValueAtTime(0.12, now + 0.015);
+                master.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+                master.connect(ctx.destination);
+
+                const toneA = ctx.createOscillator();
+                toneA.type = "sine";
+                toneA.frequency.setValueAtTime(900, now);
+                toneA.frequency.exponentialRampToValueAtTime(1250, now + 0.10);
+                toneA.connect(master);
+                toneA.start(now);
+                toneA.stop(now + 0.11);
+
+                const toneB = ctx.createOscillator();
+                toneB.type = "triangle";
+                toneB.frequency.setValueAtTime(1250, now + 0.11);
+                toneB.frequency.exponentialRampToValueAtTime(1600, now + 0.22);
+                toneB.connect(master);
+                toneB.start(now + 0.11);
+                toneB.stop(now + 0.23);
+            } catch (error) {
+                console.warn("Falha ao tocar beep de reconhecimento", error);
+            }
+        }
 
     function fmtMeters(value) {
       return typeof value === "number" ? value.toFixed(2) + " m" : "--";
@@ -2020,6 +2917,13 @@ HTML_PAGE = r'''<!doctype html>
       if (key === "d" || key === "arrowright") return "d";
       return null;
     }
+
+        function isTypingTarget(event) {
+            const element = event && event.target;
+            if (!element) return false;
+            const tag = (element.tagName || "").toLowerCase();
+            return !!element.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
+        }
 
     function deriveManualCommand() {
             if (uiState.isMobileControl) {
@@ -2051,6 +2955,63 @@ HTML_PAGE = r'''<!doctype html>
       });
       return response.json();
     }
+
+        function updateFaceSelector(face) {
+            const select = document.getElementById("face-select");
+            if (!select) return;
+
+            const names = Array.isArray(face.names) ? face.names : [];
+            const selectedName = typeof face.selected_name === "string" ? face.selected_name : uiState.selectedFaceName;
+            uiState.knownFaces = names.slice();
+            uiState.selectedFaceName = selectedName || "";
+
+            const currentOptions = [""];
+            names.forEach((name) => currentOptions.push(name));
+            const previousValue = select.value;
+            const shouldRebuild = select.options.length !== currentOptions.length || currentOptions.some((value, index) => (select.options[index] || {}).value !== value);
+
+            if (shouldRebuild) {
+                select.innerHTML = "";
+                const emptyOption = document.createElement("option");
+                emptyOption.value = "";
+                emptyOption.textContent = "Nenhuma pessoa selecionada";
+                select.appendChild(emptyOption);
+                names.forEach((name) => {
+                    const option = document.createElement("option");
+                    option.value = name;
+                    option.textContent = name;
+                    select.appendChild(option);
+                });
+            }
+
+            const nextValue = names.includes(uiState.selectedFaceName) ? uiState.selectedFaceName : "";
+            select.value = nextValue;
+            if (!nextValue && previousValue && !names.includes(previousValue)) {
+                uiState.selectedFaceName = "";
+            }
+        }
+
+        function setFaceFormStatus(message) {
+            const status = document.getElementById("face-form-status");
+            if (status) status.textContent = message;
+        }
+
+        async function selectFace(name) {
+            try {
+                const response = await postJson("/api/face/select", { name: name || "" });
+                if (!response.ok) {
+                    alert("Nao foi possivel selecionar esse rosto.");
+                    return;
+                }
+                updateFaceSelector(response.face || {});
+                setFaceFormStatus(response.face && response.face.selected_name
+                    ? `Procurando ${response.face.selected_name} na webcam ZED.`
+                    : "Nenhuma pessoa selecionada para a webcam ZED.");
+            } catch (error) {
+                console.error(error);
+                alert("Falha ao selecionar o rosto.");
+            }
+        }
 
     // Cancela qualquer fetch de controle em voo antes de mandar novo.
     let _controlAbort = null;
@@ -2234,37 +3195,103 @@ HTML_PAGE = r'''<!doctype html>
       }
     }
 
-    async function registerKauanFace() {
-      try {
-        const response = await postJson("/api/face/register_face", {});
-        if (!response.ok) {
-          alert("Nao foi possivel cadastrar o rosto agora. Olhe para a camera e tente de novo.");
-          return;
+        function applyStabilizationButton(enabled) {
+            const btn = document.getElementById("btn-stabilization");
+            if (!btn) return;
+            btn.textContent = enabled ? "Estabilizacao ON" : "Estabilizacao OFF";
+            btn.style.background = enabled ? "#1f6f5c" : "#7a1a1a";
         }
-        alert("Rosto do Kauan cadastrado com sucesso.");
-      } catch (error) {
-        console.error(error);
-        alert("Falha ao cadastrar rosto.");
-      }
-    }
+
+        async function setStabilization(enabled) {
+            try {
+                const response = await postJson("/api/kinect/stabilization", { enabled: !!enabled });
+                applyStabilizationButton(!!response.enabled);
+            } catch (error) {
+                console.error(error);
+                alert("Falha ao ajustar estabilizacao do Kinect.");
+            }
+        }
+
+        async function toggleStabilization() {
+            const btn = document.getElementById("btn-stabilization");
+            const enabledNow = btn && btn.textContent.includes("ON");
+            await setStabilization(!enabledNow);
+        }
+
+        async function registerFace() {
+            const button = document.getElementById("btn-face-register");
+            const nameInput = document.getElementById("face-name-input");
+            const fileInput = document.getElementById("face-file-input");
+            const faceName = (nameInput.value || "").trim();
+            const imageFile = fileInput.files && fileInput.files[0];
+
+            if (!faceName) {
+                alert("Digite o nome da pessoa antes de registrar.");
+                nameInput.focus();
+                return;
+            }
+            if (!imageFile) {
+                alert("Escolha uma imagem para cadastrar o rosto.");
+                fileInput.focus();
+                return;
+            }
+
+            const form = new FormData();
+            form.append("name", faceName);
+            form.append("image", imageFile);
+
+            button.disabled = true;
+            setFaceFormStatus("Enviando imagem e cadastrando rosto...");
+            try {
+                const response = await fetch("/api/face/register_face", {
+                    method: "POST",
+                    body: form,
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload.ok) {
+                    const errorCode = payload && payload.error ? payload.error : "erro desconhecido";
+                    alert("Nao foi possivel cadastrar o rosto: " + errorCode);
+                    setFaceFormStatus("Falha ao cadastrar rosto.");
+                    return;
+                }
+
+                nameInput.value = "";
+                fileInput.value = "";
+                updateFaceSelector(payload.face || {});
+                setFaceFormStatus(`Rosto de ${payload.name} salvo em ${payload.image_path}.`);
+            } catch (error) {
+                console.error(error);
+                setFaceFormStatus("Falha ao cadastrar rosto.");
+                alert("Falha ao cadastrar rosto.");
+            } finally {
+                button.disabled = false;
+            }
+        }
 
     function updateTelemetry(snapshot) {
       const state = snapshot.state || {};
       const agv = snapshot.agv || {};
       const autopilot = snapshot.autopilot || {};
       const arduino = snapshot.arduino || {};
+            const kinect = snapshot.kinect || {};
+                        const zed = snapshot.zed || {};
       const face = snapshot.face || {};
 
       document.getElementById("chip-mode").textContent = "modo " + (agv.mode || "manual");
       document.getElementById("chip-kinect").textContent = state.kinect_ok ? "kinect online" : "kinect offline";
+            document.getElementById("chip-zed").textContent = zed.online ? "zed online" : "zed offline";
       document.getElementById("chip-serial").textContent = arduino.connected ? "serial conectada" : "serial desconectada";
       if (!face.template_loaded) {
         document.getElementById("chip-face").textContent = "face sem cadastro";
       } else if (face.known && face.label) {
         document.getElementById("chip-face").textContent = face.label;
+            } else if (face.selected_name) {
+                document.getElementById("chip-face").textContent = `procurando ${face.selected_name}`;
       } else {
-        document.getElementById("chip-face").textContent = "face ativa";
+                document.getElementById("chip-face").textContent = "face aguardando selecao";
       }
+
+            updateFaceSelector(face);
 
       document.getElementById("distance").textContent = fmtMeters(state.distance_m);
       document.getElementById("left-clearance").textContent = fmtMeters(state.left_clearance_m);
@@ -2275,9 +3302,34 @@ HTML_PAGE = r'''<!doctype html>
       document.getElementById("kinect-status").textContent = state.kinect_ok
         ? `ok | atraso ${state.frame_age_s ?? "--"}s | tilt ${state.tilt_deg ?? "--"} | alvo ${state.tilt_target_deg ?? "--"}`
         : (state.kinect_error || "offline");
+            document.getElementById("zed-status").textContent = zed.online
+                ? `ok | atraso ${zed.frame_age_s ?? "--"}s | ${zed.fps ?? 0} fps`
+                : (zed.error || "offline");
       document.getElementById("serial-status").textContent = arduino.connected ? `${arduino.port || "usb"} | ${arduino.last_command || "--"}` : (arduino.last_error || "desconectada");
-      document.getElementById("face-status").textContent = face.known ? (face.label || "e o Kauan") : "--";
+            document.getElementById("face-status").textContent = face.known
+                ? `${face.label || "rosto"} | dist ${typeof face.distance === "number" ? face.distance.toFixed(3) : "--"}`
+                : (face.selected_name ? `procurando ${face.selected_name}` : "selecione uma pessoa");
       document.getElementById("fps-status").textContent = `${state.fps_rgb || 0} rgb | ${state.fps_depth || 0} depth`;
+    applyStabilizationButton(!!kinect.stabilization_enabled);
+
+            if (!face.template_loaded) {
+                setFaceFormStatus("Cadastre uma imagem com nome para procurar alguem na ZED.");
+            } else if (face.known && face.label) {
+                setFaceFormStatus(`Rosto encontrado na ZED: ${face.label}.`);
+            } else if (face.selected_name) {
+                setFaceFormStatus(`Procurando ${face.selected_name} na webcam ZED.`);
+            }
+
+            const faceKnown = !!(face && face.known && face.label);
+            const faceLabel = faceKnown ? String(face.label) : "";
+            if (faceKnown && (uiState.faceBeepArmed || uiState.faceLastLabel !== faceLabel)) {
+                playFaceBeep();
+                uiState.faceBeepArmed = false;
+            }
+            if (!faceKnown) {
+                uiState.faceBeepArmed = true;
+            }
+            uiState.faceLastLabel = faceLabel;
 
       if ((agv.mode || "manual") !== controlState.mode) {
         controlState.mode = agv.mode || "manual";
@@ -2335,11 +3387,18 @@ HTML_PAGE = r'''<!doctype html>
     document.getElementById("btn-auto").addEventListener("click", () => setMode("auto"));
     document.getElementById("btn-stop").addEventListener("click", emergencyStop);
     document.getElementById("btn-reconnect").addEventListener("click", reconnectKinect);
+    document.getElementById("btn-stabilization").addEventListener("click", toggleStabilization);
     document.getElementById("btn-tilt-up").addEventListener("click", () => sendTilt(12));
     document.getElementById("btn-tilt-center").addEventListener("click", () => sendTilt(0));
     document.getElementById("btn-tilt-down").addEventListener("click", () => sendTilt(-12));
-    document.getElementById("btn-face-register").addEventListener("click", registerKauanFace);
+        document.getElementById("btn-face-register").addEventListener("click", registerFace);
+        document.getElementById("face-select").addEventListener("change", (event) => {
+            selectFace(event.target.value);
+        });
     document.getElementById("btn-copy-link").addEventListener("click", copyShareLink);
+
+    window.addEventListener("pointerdown", ensureAudioReady, { passive: true });
+    window.addEventListener("keydown", ensureAudioReady);
 
     document.querySelectorAll("[data-key]").forEach((button) => {
       const key = button.dataset.key;
@@ -2358,6 +3417,7 @@ HTML_PAGE = r'''<!doctype html>
     });
 
     window.addEventListener("keydown", (event) => {
+            if (isTypingTarget(event)) return;
       if (event.repeat) return;
       const key = mapKey(event.key);
       if (!key) return;
@@ -2366,6 +3426,7 @@ HTML_PAGE = r'''<!doctype html>
     });
 
     window.addEventListener("keyup", (event) => {
+            if (isTypingTarget(event)) return;
       const key = mapKey(event.key);
       if (!key) return;
       event.preventDefault();
