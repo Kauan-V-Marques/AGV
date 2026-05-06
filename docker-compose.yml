@@ -21,6 +21,7 @@ services:
     environment:
       - AGV_HOST=0.0.0.0
       - AGV_PORT=5000
+      - AGV_KINECT_STABILIZATION=1
       # Descomente para ajustar os loops de controle:
       # - AGV_CONTROL_LOOP_SECONDS=0.12
       # - AGV_AUTO_LOOP_SECONDS=0.18

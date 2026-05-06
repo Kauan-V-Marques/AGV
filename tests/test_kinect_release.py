@@ -77,6 +77,23 @@ class TestKinectTilt(unittest.TestCase):
         self.assertTrue(response.get_json()["ok"])
         tilt_mock.assert_called_once_with(10.0)
 
+    def test_comando_tilt_sobe_e_desce_imediato(self):
+        sync_mock = unittest.mock.Mock()
+
+        with patch.object(sistema, "freenect") as freenect_mock:
+            freenect_mock.sync_set_tilt_degs = sync_mock
+
+            ok_up, msg_up, applied_up = sistema._command_kinect_tilt(12)
+            ok_down, msg_down, applied_down = sistema._command_kinect_tilt(-12)
+
+        self.assertTrue(ok_up)
+        self.assertTrue(ok_down)
+        self.assertEqual(msg_up, "tilt aplicado")
+        self.assertEqual(msg_down, "tilt aplicado")
+        self.assertEqual(applied_up, 12.0)
+        self.assertEqual(applied_down, -12.0)
+        self.assertEqual(sync_mock.call_args_list, [call(12), call(-12)])
+
     def test_correcao_tilt_pelo_acelerometro(self):
         fake_state = object()
 
@@ -95,6 +112,48 @@ class TestKinectTilt(unittest.TestCase):
         set_tilt.assert_called_once()
         requested = float(set_tilt.call_args.args[1])
         self.assertNotEqual(requested, 0.0)
+
+    def test_tilt_manual_funciona_com_estabilizacao_off(self):
+        fake_state = object()
+        sistema._tilt_manual_until = sistema._now() + 2.0
+        sistema._tilt_manual_target = 12.0
+        sistema._tilt_last_set_at = 0.0
+
+        with patch.object(sistema, "KINECT_STABILIZATION_ENABLED", False), \
+             patch.object(sistema, "KINECT_TILT_INTERVAL", 0.0), \
+             patch.object(sistema, "KINECT_TILT_DEADBAND", 0.1), \
+             patch.object(sistema.freenect, "update_tilt_state"), \
+             patch.object(sistema.freenect, "get_tilt_state", return_value=fake_state), \
+             patch.object(sistema.freenect, "get_tilt_degs", return_value=0.0), \
+             patch.object(sistema.freenect, "get_mks_accel", return_value=(0.0, 0.0, 0.0)), \
+             patch.object(sistema.freenect, "set_tilt_degs") as set_tilt:
+            sistema._do_tilt_body(object())
+
+        set_tilt.assert_called_once()
+
+    def test_rota_stabilization_get_retorna_estado(self):
+        client = sistema.app.test_client()
+
+        with patch("pc_agv.iniciar_sistema._get_kinect_stabilization", return_value=True):
+            response = client.get("/api/kinect/stabilization")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["enabled"])
+
+    @patch("pc_agv.iniciar_sistema._set_kinect_stabilization")
+    def test_rota_stabilization_post_atualiza_estado(self, set_mock):
+        set_mock.return_value = True
+        client = sistema.app.test_client()
+
+        response = client.post("/api/kinect/stabilization", json={"enabled": True})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["enabled"])
+        set_mock.assert_called_once_with(True)
 
 
 if __name__ == "__main__":
