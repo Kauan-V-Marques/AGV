@@ -85,7 +85,7 @@ def _handle_stop_signal(signum, _frame) -> None:
     global _RUNNING
 
     _RUNNING = False
-    print(f"\nSinal {signum} recebido. Encerrando AGV...")
+    print(f"\nSinal {signum} recebido. Encerrando agv...")
 
 
 atexit.register(_release_single_instance_lock)
@@ -128,7 +128,7 @@ def _ensure_visible_terminal() -> None:
             if proc.poll() is not None and proc.returncode != 0:
                 # terminal crashou antes de abrir (ex: gnome-terminal com snap quebrado)
                 continue
-            print("Abrindo terminal para mostrar os logs do AGV...")
+            print("Abrindo terminal para mostrar os logs do agv...")
             raise SystemExit(0)
         except Exception:
             continue
@@ -139,7 +139,7 @@ def _ensure_visible_terminal() -> None:
         log_file = open(log_path, "a", buffering=1, encoding="utf-8")
         sys.stdout = log_file
         sys.stderr = log_file
-        print(f"\n=== AGV sem terminal — logs em {log_path} ===")
+        print(f"\n=== agv sem terminal — logs em {log_path} ===")
     except Exception:
         pass
     os.environ["AGV_TERMINAL_RELAUNCHED"] = "1"
@@ -156,7 +156,7 @@ def _is_server_online(url: str) -> bool:
 _ensure_visible_terminal()
 
 if not _acquire_single_instance_lock():
-    print("Outro AGV ja esta em execucao neste PC.")
+    print("Outro agv ja esta em execucao neste PC.")
     if _is_server_online(URL):
         print(f"Abrindo painel existente: {URL}")
         webbrowser.open(URL)
@@ -168,7 +168,7 @@ signal.signal(signal.SIGINT, _handle_stop_signal)
 signal.signal(signal.SIGTERM, _handle_stop_signal)
 
 print("=" * 60)
-print("  AGV | Site + Kinect + Arduino")
+print("  agv | Site + Kinect + Arduino")
 print("=" * 60)
 
 # Remove drivers de kernel que bloqueiam o Kinect via libusb (LIBUSB_ERROR_BUSY)

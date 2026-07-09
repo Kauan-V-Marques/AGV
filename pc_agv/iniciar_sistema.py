@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Servidor web do AGV.
+Servidor web do agv.
 
 Escopo atual:
 - stream RGB do Kinect v1
@@ -58,7 +58,7 @@ DEFAULT_PORT = int(os.environ.get("AGV_PORT", "5000"))
 CONTROL_LOOP_SECONDS = float(os.environ.get("AGV_CONTROL_LOOP_SECONDS", "0.12"))
 AUTO_LOOP_SECONDS = float(os.environ.get("AGV_AUTO_LOOP_SECONDS", "0.18"))
 CAPTURE_LOOP_SECONDS = float(os.environ.get("AGV_CAPTURE_LOOP_SECONDS", "0.06"))
-# Watchdog: para o AGV se nenhum comando manual chegar neste intervalo (0 = desativado)
+# Watchdog: para o agv se nenhum comando manual chegar neste intervalo (0 = desativado)
 WATCHDOG_TIMEOUT_S = float(os.environ.get("AGV_WATCHDOG_TIMEOUT_S", "2.0"))
 # FPS dos streams MJPEG — reduzido para funcionar bem com sinal fraco.
 VIDEO_FPS = int(os.environ.get("AGV_VIDEO_FPS", "6"))
@@ -1863,7 +1863,7 @@ def start_runtime() -> None:
             thread.start()
             _threads.append(thread)
 
-        log.info("Runtime AGV iniciado")
+        log.info("Runtime agv iniciado")
 
 
 def stop_runtime() -> None:
@@ -1882,7 +1882,7 @@ def stop_runtime() -> None:
     for thread in list(_threads):
         thread.join(timeout=1.0)
     _threads.clear()
-    log.info("Runtime AGV finalizado")
+    log.info("Runtime agv finalizado")
 
 
 atexit.register(stop_runtime)
@@ -2226,7 +2226,7 @@ HTML_PAGE = r'''<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AGV Basico</title>
+    <title>agv</title>
   <style>
     :root {
       --bg: #f3efe5;
@@ -2699,7 +2699,7 @@ HTML_PAGE = r'''<!doctype html>
             <div id="net-banner" hidden style="background:#7a1a1a;color:#fff;border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;letter-spacing:0.03em;text-align:center;"></div>
       <div class="hero-top">
         <div>
-          <h1>AGV<br>Basico</h1>
+          <h1>agv</h1>
           <p>Controle pelo navegador com video ao vivo do Kinect, mapa de profundidade e modo autonomo simples por distancia.</p>
         </div>
         <div class="chips">
@@ -2721,7 +2721,7 @@ HTML_PAGE = r'''<!doctype html>
         <article class="panel">
           <h2>RGB Kinect</h2>
           <img class="stream" src="/video" alt="Video RGB do Kinect">
-          <div class="caption">Imagem ao vivo usada para acompanhar o AGV.</div>
+          <div class="caption">Imagem ao vivo usada para acompanhar o agv.</div>
         </article>
 
         <article class="panel">
@@ -2733,7 +2733,7 @@ HTML_PAGE = r'''<!doctype html>
                 <article class="panel">
                     <h2>Webcam ZED</h2>
                     <img class="stream" src="/zed" alt="Video da webcam ZED">
-                    <div class="caption">Camera extra para monitorar a traseira do AGV.</div>
+                    <div class="caption">Camera extra para monitorar a traseira do agv.</div>
                 </article>
       </div>
 
@@ -3110,7 +3110,7 @@ HTML_PAGE = r'''<!doctype html>
             keyboardPad.hidden = uiState.isMobileControl;
             mobileJoystick.hidden = !uiState.isMobileControl;
             hint.textContent = uiState.isMobileControl
-                ? "Stick virtual ativo. Arraste o centro para mover o AGV e solte para parar."
+                ? "Stick virtual ativo. Arraste o centro para mover o agv e solte para parar."
                 : "No PC, use W A S D, setas ou E como esquerda.";
             if (uiState.isMobileControl) {
                 controlState.pressed = { w: false, a: false, s: false, d: false };
@@ -3374,7 +3374,7 @@ HTML_PAGE = r'''<!doctype html>
             if (!banner) return;
             if (rtt === null || rtt > 800 || _statusFail > 0) {
                 const msg = rtt === null
-                    ? (_statusFail >= 3 ? "⚠ Sem resposta do AGV — verifique o Wi-Fi" : "⚠ Conexão lenta...")
+                    ? (_statusFail >= 3 ? "⚠ Sem resposta do agv — verifique o Wi-Fi" : "⚠ Conexão lenta...")
                     : `⚠ Sinal fraco (${rtt}ms)`;
                 banner.textContent = msg;
                 banner.hidden = false;
