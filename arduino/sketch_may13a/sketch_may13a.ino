@@ -231,7 +231,7 @@ void processCommand(char* cmd) {
   }
   
   // Validar limites
-  aceleracao = constrain(aceleracao, 0, 255);
+  aceleracao = constrain(aceleracao, -255, 255);
   direcao = constrain(direcao, -254, 254);
   
   // Aplicar filtro anti-tremor
@@ -240,7 +240,9 @@ void processCommand(char* cmd) {
   
   // Modo degradado limita velocidade
   if (degradedMode) {
-    aceleracao = min(aceleracao, DEGRADED_SPEED_LIMIT);
+    int magnitude = abs(aceleracao);
+    int degradedLimit = min(magnitude, DEGRADED_SPEED_LIMIT);
+    aceleracao = aceleracao < 0 ? -degradedLimit : degradedLimit;
   }
   
   // Resetar timeout e emergência
@@ -262,33 +264,35 @@ void processCommand(char* cmd) {
 
 // ===== CALCULAR POTÊNCIAS ALVO =====
 void calculateMotorTargets(int aceleracao, int direcao) {
-  int m1_power = aceleracao;
-  int m2_power = aceleracao;
-  bool m1_dir = HIGH;
-  bool m2_dir = HIGH;
+  int magnitude = abs(aceleracao);
+  bool reverse = aceleracao < 0;
+  int m1_power = magnitude;
+  int m2_power = magnitude;
+  bool m1_dir = reverse ? LOW : HIGH;
+  bool m2_dir = reverse ? LOW : HIGH;
   
   // Zona neutra (reto)
   if (direcao >= -30 && direcao <= 30) {
-    m1_power = aceleracao;
-    m2_power = aceleracao;
-    m1_dir = HIGH;
-    m2_dir = HIGH;
+    m1_power = magnitude;
+    m2_power = magnitude;
+    m1_dir = reverse ? LOW : HIGH;
+    m2_dir = reverse ? LOW : HIGH;
   }
   // Curva para a esquerda
   else if (direcao < -30) {
     float fator = (float)(-direcao - 30) / (254 - 30);
-    m1_power = int(aceleracao * fator);
-    m2_power = int(aceleracao * (0.9 + 0.1 * fator));
-    m1_dir = LOW;   // ré
-    m2_dir = HIGH;  // frente
+    m1_power = int(magnitude * fator);
+    m2_power = int(magnitude * (0.9 + 0.1 * fator));
+    m1_dir = reverse ? HIGH : LOW;
+    m2_dir = reverse ? LOW : HIGH;
   }
   // Curva para a direita
   else if (direcao > 30) {
     float fator = (float)(direcao - 30) / (254 - 30);
-    m1_power = int(aceleracao * (0.9 + 0.1 * fator));
-    m2_power = int(aceleracao * fator);
-    m1_dir = HIGH;  // frente
-    m2_dir = LOW;   // ré
+    m1_power = int(magnitude * (0.9 + 0.1 * fator));
+    m2_power = int(magnitude * fator);
+    m1_dir = reverse ? LOW : HIGH;
+    m2_dir = reverse ? HIGH : LOW;
   }
   
   // *** PROTEÇÃO ANTI-REVERSÃO BRUSCA ***
