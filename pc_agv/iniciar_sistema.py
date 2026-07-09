@@ -1032,16 +1032,19 @@ def _speed_steering_to_payload(speed: int, steering: int) -> tuple[int, int]:
     speed_cmd = _clamp(speed, -100, 100)
     steering_cmd = _clamp(steering, -100, 100)
 
-    forward_pct = max(0, speed_cmd)
-    accel = forward_pct * 255 // 100
+    abs_speed_pct = abs(speed_cmd)
+    accel = abs_speed_pct * 255 // 100
 
-    if forward_pct > 0:
+    if abs_speed_pct > 0:
         accel = max(_clamp(MIN_FORWARD_PWM, 0, 255), accel)
+
+    if speed_cmd < 0:
+        accel = -accel
 
     if accel == 0 and abs(steering_cmd) >= 20:
         accel = _clamp(MIN_TURN_PWM, 0, 255)
 
-    steering_gain = 0.70 if accel > 0 else 1.00
+    steering_gain = 0.70 if accel != 0 else 1.00
     dir_val = int(steering_cmd * 254 * steering_gain / 100)
     if abs(dir_val) < 8:
         dir_val = 0
@@ -1074,9 +1077,9 @@ def _send_to_arduino(speed: int, steering: int, mode: str, source: str) -> bool:
     # A 50% o PWM maximo e 127 (visivelmente mais lento que 255).
     with _settings_lock:
         limit_pct = _settings["speed_limit_pct"]
-    if limit_pct < 100 and accel > 0:
+    if limit_pct < 100 and accel != 0:
         max_pwm = int(255 * limit_pct / 100)
-        accel = min(accel, max_pwm)
+        accel = max(-max_pwm, min(max_pwm, accel))
 
     payload = f"{accel},{dir_val}"
 

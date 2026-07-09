@@ -81,6 +81,12 @@ class TestArduinoSerial(unittest.TestCase):
 
         self.assertEqual(ports, ["/dev/ttyACM0"])
 
+    def test_payload_reversa_envia_valor_negativo_para_o_arduino(self):
+        accel, dir_val = sistema._speed_steering_to_payload(-50, 0)
+
+        self.assertEqual(accel, -170)
+        self.assertEqual(dir_val, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
