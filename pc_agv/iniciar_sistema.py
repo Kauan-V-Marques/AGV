@@ -2694,6 +2694,184 @@ HTML_PAGE = r'''<!doctype html>
       border: 2px solid #fff;
       cursor: pointer;
     }
+
+    /* Botao para abrir o visualizador HUD em tela cheia */
+    .hud-toggle-btn {
+      float: right;
+      background: rgba(23, 32, 42, 0.75);
+      color: #eafff2;
+      border: 1px solid rgba(142, 255, 195, 0.3);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .hud-toggle-btn:hover { filter: brightness(1.15); }
+
+    /* Visualizador HUD estilo videogame */
+    body.hud-active { overflow: hidden; }
+
+    .hud-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #000;
+      overflow: hidden;
+      font-family: var(--mono);
+      touch-action: none;
+    }
+    .hud-overlay[hidden] { display: none; }
+
+    .hud-main-frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .hud-main-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 0;
+      border: 0;
+      aspect-ratio: auto;
+    }
+
+    .hud-top-bar {
+      position: absolute;
+      top: max(14px, env(safe-area-inset-top));
+      left: max(14px, env(safe-area-inset-left));
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-width: 56%;
+      pointer-events: none;
+    }
+    .hud-chip {
+      background: rgba(6, 14, 10, 0.6);
+      border: 1px solid rgba(142, 255, 195, 0.35);
+      color: #b9ffd8;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      backdrop-filter: blur(4px);
+      white-space: nowrap;
+    }
+    .hud-chip.hud-warn { color: #ff9d9d; border-color: rgba(255, 120, 120, 0.45); }
+
+    .hud-corner-pip {
+      position: absolute;
+      top: max(14px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
+      width: clamp(96px, 22vw, 180px);
+      aspect-ratio: 4 / 3;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(142, 255, 195, 0.45);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      background: #000;
+    }
+    .hud-corner-pip img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      opacity: 0.92;
+      border-radius: 0;
+      border: 0;
+      aspect-ratio: auto;
+    }
+    .hud-pip-label {
+      position: absolute;
+      left: 6px;
+      bottom: 4px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: #8effc3;
+      background: rgba(0, 0, 0, 0.55);
+      padding: 2px 6px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .hud-telemetry {
+      position: absolute;
+      bottom: max(14px, env(safe-area-inset-bottom));
+      left: max(14px, env(safe-area-inset-left));
+      display: grid;
+      gap: 4px;
+      background: rgba(6, 14, 10, 0.55);
+      border: 1px solid rgba(142, 255, 195, 0.25);
+      border-radius: 10px;
+      padding: 10px 12px;
+      backdrop-filter: blur(4px);
+      min-width: 150px;
+      pointer-events: none;
+    }
+    .hud-metric {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      font-size: 12px;
+      color: #b9ffd8;
+    }
+    .hud-metric span { opacity: 0.7; letter-spacing: 0.05em; text-transform: uppercase; }
+    .hud-metric strong { font-weight: 700; color: #eafff2; }
+
+    .hud-hint {
+      position: absolute;
+      bottom: max(14px, env(safe-area-inset-bottom));
+      right: max(14px, env(safe-area-inset-right));
+      margin: 0;
+      color: #b9ffd8;
+      opacity: 0.7;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .hud-exit-btn {
+      position: absolute;
+      top: max(14px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(6, 14, 10, 0.6);
+      color: #ffb9b9;
+      border: 1px solid rgba(255, 120, 120, 0.4);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      backdrop-filter: blur(4px);
+    }
+
+    .hud-joystick-wrap {
+      position: absolute;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      right: max(18px, env(safe-area-inset-right));
+      opacity: 0.82;
+    }
+    .hud-joystick-wrap .joystick-readout { display: none; }
+    .hud-joystick-wrap .joystick-base {
+      width: min(38vw, 150px);
+      background:
+        radial-gradient(circle at 30% 30%, rgba(142, 255, 195, 0.18), rgba(255, 255, 255, 0.04)),
+        linear-gradient(150deg, rgba(6, 14, 10, 0.55), rgba(6, 14, 10, 0.25));
+      border-color: rgba(142, 255, 195, 0.35);
+    }
+    .hud-joystick-wrap .joystick-ring { border-color: rgba(142, 255, 195, 0.4); }
+    .hud-joystick-wrap .joystick-knob {
+      background: linear-gradient(160deg, #eafff2, #8effc3);
+      border-color: rgba(142, 255, 195, 0.5);
+    }
   </style>
 </head>
 <body>
@@ -2722,14 +2900,14 @@ HTML_PAGE = r'''<!doctype html>
     <section class="grid">
       <div class="video-stack">
         <article class="panel">
-          <h2>RGB Kinect</h2>
-          <img class="stream" src="/video" alt="Video RGB do Kinect">
-          <div class="caption">Imagem ao vivo usada para acompanhar o agv.</div>
+          <h2>RGB Kinect <button class="hud-toggle-btn" id="btn-hud-toggle" type="button" title="Abrir visualizador HUD em tela cheia">⛶ HUD</button></h2>
+          <img class="stream" id="rgb-stream" src="/video" alt="Video RGB do Kinect">
+          <div class="caption">Imagem ao vivo usada para acompanhar o agv. Toque em HUD para tela cheia.</div>
         </article>
 
         <article class="panel">
           <h2>Depth Kinect</h2>
-          <img class="stream" src="/depth_map" alt="Mapa de profundidade do Kinect">
+          <img class="stream" id="depth-stream" src="/depth_map" alt="Mapa de profundidade do Kinect">
           <div class="caption">Mapa de distancia usado no modo autonomo.</div>
         </article>
 
@@ -2841,6 +3019,29 @@ HTML_PAGE = r'''<!doctype html>
       </div>
     </section>
   </main>
+
+    <div class="hud-overlay" id="hud-overlay" hidden>
+        <div class="hud-main-frame" id="hud-main-frame"></div>
+        <div class="hud-top-bar">
+            <div class="hud-chip" id="hud-chip-mode">MODO --</div>
+            <div class="hud-chip" id="hud-chip-kinect">KINECT --</div>
+            <div class="hud-chip" id="hud-chip-serial">SERIAL --</div>
+        </div>
+        <div class="hud-corner-pip" id="hud-pip-frame">
+            <span class="hud-pip-label">Infra / Profundidade</span>
+        </div>
+        <div class="hud-telemetry" id="hud-telemetry">
+            <div class="hud-metric"><span>Dist</span><strong id="hud-distance">--</strong></div>
+            <div class="hud-metric"><span>Esq</span><strong id="hud-left">--</strong></div>
+            <div class="hud-metric"><span>Cen</span><strong id="hud-center">--</strong></div>
+            <div class="hud-metric"><span>Dir</span><strong id="hud-right">--</strong></div>
+            <div class="hud-metric"><span>Cmd</span><strong id="hud-cmd">--</strong></div>
+            <div class="hud-metric"><span>Fps</span><strong id="hud-fps">--</strong></div>
+        </div>
+        <p class="hud-hint" id="hud-hint">WASD / setas para mover · ESC para sair</p>
+        <div class="hud-joystick-wrap" id="hud-joystick-wrap" hidden></div>
+        <button class="hud-exit-btn" id="btn-hud-exit" type="button">Sair ✕</button>
+    </div>
 
   <script>
     const controlState = {
@@ -3315,6 +3516,18 @@ HTML_PAGE = r'''<!doctype html>
       document.getElementById("fps-status").textContent = `${state.fps_rgb || 0} rgb | ${state.fps_depth || 0} depth`;
     applyStabilizationButton(!!kinect.stabilization_enabled);
 
+            document.getElementById("hud-chip-mode").textContent = "modo " + (agv.mode || "manual");
+            document.getElementById("hud-chip-kinect").textContent = state.kinect_ok ? "kinect online" : "kinect offline";
+            document.getElementById("hud-chip-kinect").classList.toggle("hud-warn", !state.kinect_ok);
+            document.getElementById("hud-chip-serial").textContent = arduino.connected ? "serial conectada" : "serial desconectada";
+            document.getElementById("hud-chip-serial").classList.toggle("hud-warn", !arduino.connected);
+            document.getElementById("hud-distance").textContent = fmtMeters(state.distance_m);
+            document.getElementById("hud-left").textContent = fmtMeters(state.left_clearance_m);
+            document.getElementById("hud-center").textContent = fmtMeters(state.center_clearance_m);
+            document.getElementById("hud-right").textContent = fmtMeters(state.right_clearance_m);
+            document.getElementById("hud-cmd").textContent = `${agv.active_speed ?? 0} / ${agv.active_steering ?? 0}`;
+            document.getElementById("hud-fps").textContent = `${state.fps_rgb || 0}`;
+
             if (!face.template_loaded) {
                 setFaceFormStatus("Cadastre uma imagem com nome para procurar alguem na ZED.");
             } else if (face.known && face.label) {
@@ -3518,6 +3731,72 @@ HTML_PAGE = r'''<!doctype html>
         joystickBase.addEventListener("pointerup", onStickRelease);
         joystickBase.addEventListener("pointercancel", onStickRelease);
         joystickBase.addEventListener("pointerleave", onStickRelease);
+
+        // ── Visualizador HUD em tela cheia ───────────────────────────────
+        const hudOverlay = document.getElementById("hud-overlay");
+        const hudMainFrame = document.getElementById("hud-main-frame");
+        const hudPipFrame = document.getElementById("hud-pip-frame");
+        const hudJoystickWrap = document.getElementById("hud-joystick-wrap");
+        const btnHudToggle = document.getElementById("btn-hud-toggle");
+        const btnHudExit = document.getElementById("btn-hud-exit");
+        const hudHint = document.getElementById("hud-hint");
+
+        const rgbStream = document.getElementById("rgb-stream");
+        const depthStream = document.getElementById("depth-stream");
+        const hudMobileJoystick = document.getElementById("mobile-joystick");
+        const rgbHome = { parent: rgbStream.parentElement, next: rgbStream.nextElementSibling };
+        const depthHome = { parent: depthStream.parentElement, next: depthStream.nextElementSibling };
+        const joystickHome = { parent: hudMobileJoystick.parentElement, next: hudMobileJoystick.nextElementSibling };
+
+        function requestRealFullscreen(el) {
+            const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+            if (!request) return;
+            try { request.call(el); } catch (error) { /* segue so com o fallback em CSS */ }
+        }
+
+        function exitRealFullscreen() {
+            const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+            if (document.fullscreenElement && exit) {
+                try { exit.call(document); } catch (error) { /* ignora */ }
+            }
+        }
+
+        function openHud() {
+            hudMainFrame.appendChild(rgbStream);
+            hudPipFrame.appendChild(depthStream);
+            hudOverlay.hidden = false;
+            document.body.classList.add("hud-active");
+            if (uiState.isMobileControl) {
+                hudJoystickWrap.appendChild(hudMobileJoystick);
+                hudJoystickWrap.hidden = false;
+                hudMobileJoystick.hidden = false;
+                hudHint.hidden = true;
+            } else {
+                hudJoystickWrap.hidden = true;
+                hudHint.hidden = false;
+            }
+            requestRealFullscreen(hudOverlay);
+        }
+
+        function closeHud() {
+            if (hudOverlay.hidden) return;
+            hudOverlay.hidden = true;
+            document.body.classList.remove("hud-active");
+            rgbHome.parent.insertBefore(rgbStream, rgbHome.next);
+            depthHome.parent.insertBefore(depthStream, depthHome.next);
+            joystickHome.parent.insertBefore(hudMobileJoystick, joystickHome.next);
+            hudMobileJoystick.hidden = !uiState.isMobileControl;
+            exitRealFullscreen();
+        }
+
+        btnHudToggle.addEventListener("click", openHud);
+        btnHudExit.addEventListener("click", closeHud);
+        document.addEventListener("fullscreenchange", () => {
+            if (!document.fullscreenElement) closeHud();
+        });
+        window.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !hudOverlay.hidden) closeHud();
+        });
 
         setupControlSurface();
         resolveShareLink();
