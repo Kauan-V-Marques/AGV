@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Build/PyInstaller (regenerado com launch_production.spec)
+build/
+dist/
+
+# Dados de runtime do AGV (fotos e encodings gerados localmente)
+logs/*
+!logs/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Arquivos de extensoes de IDE nao relacionados ao projeto
+.github/copilot-instructions.md
+.vscode/mcp.json

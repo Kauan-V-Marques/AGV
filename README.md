@@ -1,118 +1,134 @@
-# AGV Basico
+# agv
 
-Projeto reduzido para o fluxo essencial do AGV:
+Sistema de controle web para o AGV: video RGB e mapa de profundidade ao vivo do
+Kinect v1 (e webcam ZED), reconhecimento facial, controle manual por teclado ou
+joystick virtual, modo autonomo simples por profundidade e envio serial para o
+Arduino. Um unico executavel principal (`launch_production`) sobe o backend e
+abre o navegador no painel.
 
-- site unico para controle
-- video RGB ao vivo do Kinect v1
-- mapa de profundidade ao vivo
-- botoes W A S D para celular
-- teclado W A S D, setas e E como esquerda no PC
-- envio serial para o Arduino
-- modo manual e modo autonomo simples por profundidade
-- um unico executavel principal: `launch_production`
+## 🚀 Começando
 
-## Estrutura que ficou
+Estas instrucoes colocam uma copia do projeto rodando na sua maquina. Veja
+**Pre-requisitos** e **Instalacao** abaixo. O jeito mais simples e via Docker —
+funciona tanto no PC do AGV (Linux/Ubuntu, com Kinect e Arduino conectados)
+quanto so para visualizar o painel web (Windows/Mac, sem hardware).
 
-```text
-agv/
-├── arduino/
-│   └── sketch_may13a.ino
-├── launch_production.py
-├── launch_production.spec
-├── logs/
-├── pc_agv/
-│   ├── iniciar_sistema.py
-│   └── requirements.txt
-└── tests/
-```
+### 📋 Pré-requisitos
 
-## O que saiu do projeto
+**Para rodar com Docker (recomendado):**
 
-- reconhecimento facial
-- banco SQLite da IA
-- cadastro de faces
-- cliente remoto separado
-- launchers alternativos
-- builds antigos e executaveis gerados
+- [Docker](https://docs.docker.com/engine/install/) e
+  [Docker Compose](https://docs.docker.com/compose/install/) instalados
+- No Windows/Mac: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+  (com o backend WSL2 no Windows)
 
-## Rodando com Docker (jeito mais facil)
-
-Com Docker qualquer pessoa consegue rodar o projeto sem instalar nada manualmente.
-
-### Pre-requisitos
-
-- [Docker](https://docs.docker.com/engine/install/) instalado
-- [Docker Compose](https://docs.docker.com/compose/install/) instalado
-
-### Subir o servidor
-
-```bash
-# 1. Clone o repositorio
-git clone <URL_DO_REPO>
-cd agv
-
-# 2. Suba o container (na primeira vez ele constroi a imagem automaticamente)
-docker compose up --build
-
-# 3. Acesse no navegador
-# http://localhost:5000
-```
-
-Para rodar em segundo plano:
-
-```bash
-docker compose up -d --build
-```
-
-Para parar:
-
-```bash
-docker compose down
-```
-
-### Dispositivos de hardware
-
-O `docker-compose.yml` ja esta configurado para passar o Arduino (`/dev/ttyACM0`) e o
-Kinect (barramento USB) para dentro do container. Se o Arduino aparecer em outra porta
-(ex.: `/dev/ttyACM1`), edite o campo `devices` no `docker-compose.yml`.
-
-### Verificar logs
-
-```bash
-docker compose logs -f
-```
-
----
-
-## Dependencias no Linux
-
-Instale os pacotes do sistema no PC AGV:
+**Para rodar sem Docker, direto no PC do AGV (Linux/Ubuntu):**
 
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-pip python3-freenect libfreenect-dev libfreenect-bin
 ```
 
-Instale as dependencias Python:
+### 🔧 Instalação
+
+Passo a passo para ter o ambiente rodando.
+
+**1. Clone o repositorio**
 
 ```bash
-cd '/home/kauan-linux/Área de trabalho/agv'
-pip3 install -r pc_agv/requirements.txt --break-system-packages
+git clone https://github.com/Kauan-V-Marques/AGV.git
+cd AGV
 ```
 
-## Como rodar em desenvolvimento
+**2. Suba o container**
+
+No PC do AGV (Linux/Ubuntu), com Kinect e Arduino conectados — o
+`docker-compose.yml` ja passa o Arduino (`/dev/ttyACM0`) e o Kinect (USB) para
+dentro do container. Se o Arduino aparecer em outra porta (ex.: `/dev/ttyACM1`),
+edite o campo `devices`:
 
 ```bash
-cd '/home/kauan-linux/Área de trabalho/agv'
-/usr/bin/python3 launch_production.py
+docker compose up --build
 ```
 
-O launcher:
+No Windows/Mac, so para visualizar o painel web (sem hardware — o
+`docker-compose.yml` normal usa `network_mode: host` e caminhos `/dev/...` que
+nao existem no Docker Desktop, por isso existe a variante abaixo):
 
-1. tenta liberar o Kinect
-2. sobe o servidor web no mesmo processo
-3. abre o navegador em `http://127.0.0.1:5000`
-4. mantem o terminal aberto com os logs
+```bash
+docker compose -f docker-compose.windows.yml up --build
+```
+
+Para rodar em segundo plano, adicione `-d`. Para parar, `docker compose down`.
+Para ver os logs, `docker compose logs -f`.
+
+**3. Acesse no navegador**
+
+```text
+http://localhost:5000
+```
+
+Sem Kinect/Arduino/ZED conectados o painel abre normalmente, so que com os
+streams de video e status marcados como indisponiveis.
+
+**Sem Docker, direto no Linux do AGV:**
+
+```bash
+pip3 install -r requirements.txt --break-system-packages
+python3 launch_production.py
+```
+
+O launcher tenta liberar o Kinect, sobe o servidor web no mesmo processo, abre
+`http://127.0.0.1:5000` no navegador e mantem o terminal com os logs.
+
+## 🛠️ Construído com
+
+- [Python 3.11](https://www.python.org/) — linguagem principal do backend
+- [Flask](https://flask.palletsprojects.com/) — servidor web e API
+- [OpenCV](https://opencv.org/) — video, mapa de profundidade e deteccao de rosto
+- [face-recognition](https://github.com/ageitgey/face_recognition) / dlib — reconhecimento facial
+- [libfreenect](https://github.com/OpenKinect/libfreenect) — driver do Kinect v1
+- [PySerial](https://pyserial.readthedocs.io/) — comunicacao serial com o Arduino
+- [Docker](https://www.docker.com/) — empacotamento e execucao
+- [PyInstaller](https://pyinstaller.org/) — gera o executavel unico
+- Firmware Arduino (C++) — controle dos motores
+
+## 📌 Versão
+
+Ainda sem tags formais de versao no repositorio — o historico de commits usa
+marcos como `v1.0.2`, `v1.0.3`, `v1.0.4` (ultima: reorganizacao do sketch do
+Arduino e padronizacao dos nomes para minusculas). Veja o
+[historico de commits](https://github.com/Kauan-V-Marques/AGV/commits/main)
+para o que mudou em cada marco.
+
+## ✒️ Autores
+
+- **Kauan V. Marques** — [Kauan-V-Marques](https://github.com/Kauan-V-Marques)
+
+---
+
+## Estrutura do projeto
+
+```text
+agv/
+├── arduino/
+│   └── sketch_may13a/
+│       └── sketch_may13a.ino
+├── pc_agv/
+│   ├── __init__.py
+│   └── iniciar_sistema.py
+├── tests/
+│   ├── test_arduino_serial.py
+│   └── test_kinect_release.py
+├── logs/                      # fotos e encodings gerados em runtime (git-ignored)
+├── launch_production.py
+├── launch_production.spec
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml         # deploy no PC do AGV (Linux/Ubuntu)
+├── docker-compose.windows.yml # so o painel web, sem hardware (Windows)
+└── README.md
+```
 
 ## API basica
 
@@ -136,26 +152,13 @@ curl -X POST http://127.0.0.1:5000/api/control \
 
 ## Gerar o executavel unico
 
-Instale o PyInstaller se ainda nao estiver instalado:
-
 ```bash
 pip3 install pyinstaller --break-system-packages
+pyinstaller launch_production.spec
 ```
 
-Depois gere o binario:
-
-```bash
-cd '/home/kauan-linux/Área de trabalho/agv'
-~/.local/bin/pyinstaller launch_production.spec
-```
-
-Saida esperada:
-
-```text
-dist/launch_production
-```
-
-Esse executavel ja inclui o launcher e o backend no mesmo processo.
+Saida esperada: `dist/launch_production` — ja inclui o launcher e o backend no
+mesmo processo.
 
 ## Variaveis uteis
 
@@ -169,21 +172,22 @@ Esse executavel ja inclui o launcher e o backend no mesmo processo.
 
 ## Protocolo serial
 
-O servidor envia para o Arduino o formato:
-
-```text
-aceleracao,direcao\n
-```
-
-Exemplo:
+O servidor envia para o Arduino o formato `aceleracao,direcao\n`. Exemplo:
 
 ```text
 140,0
 100,-177
 ```
 
-## Observacoes
+## Observações
 
-- O modo autonomo atual e simples: ele usa apenas profundidade para seguir em frente e desviar do lado com mais espaco.
+- O modo autonomo atual e simples: usa apenas profundidade para seguir em
+  frente e desviar do lado com mais espaco.
 - Se o Kinect nao estiver respondendo, o modo autonomo para o AGV.
-- O firmware do Arduino foi mantido porque ja estava servindo para o fluxo basico de motores e seguranca.
+- O firmware do Arduino foi mantido porque ja estava servindo para o fluxo
+  basico de motores e seguranca.
+
+## 📄 Licença
+
+Este projeto esta sob a licenca MIT — veja o arquivo [LICENSE](LICENSE) para
+detalhes.
