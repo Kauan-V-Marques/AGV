@@ -23,3 +23,7 @@ logs/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Arquivos de extensoes de IDE nao relacionados ao projeto
+.github/copilot-instructions.md
+.vscode/mcp.json

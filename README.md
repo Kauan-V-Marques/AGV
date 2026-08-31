@@ -186,3 +186,8 @@ O servidor envia para o Arduino o formato `aceleracao,direcao\n`. Exemplo:
 - Se o Kinect nao estiver respondendo, o modo autonomo para o AGV.
 - O firmware do Arduino foi mantido porque ja estava servindo para o fluxo
   basico de motores e seguranca.
+
+## 📄 Licença
+
+Este projeto esta sob a licenca MIT — veja o arquivo [LICENSE](LICENSE) para
+detalhes.
