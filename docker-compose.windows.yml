@@ -1,0 +1,29 @@
+# Variante para rodar no Docker Desktop (Windows/Mac) so para ver o painel web.
+#
+# Diferencas do docker-compose.yml (que e para o AGV real no Linux/Ubuntu):
+#   - sem network_mode: host (nao existe no Docker Desktop) -> usa "ports"
+#   - sem passthrough de USB/serial (Kinect e Arduino nao aparecem no Windows)
+#   - Arduino desligado por env var para nao ficar tentando reconectar a toa
+#
+# Uso:
+#   docker compose -f docker-compose.windows.yml up --build
+#   Acesse http://localhost:5000
+services:
+  agv:
+    build: .
+    image: agv-servidor
+    container_name: agv
+
+    ports:
+      - "5000:5000"
+
+    environment:
+      - AGV_HOST=0.0.0.0
+      - AGV_PORT=5000
+      - AGV_ARDUINO_ENABLED=0
+      - AGV_KINECT_STABILIZATION=0
+
+    volumes:
+      - ./logs:/app/logs
+
+    restart: unless-stopped
