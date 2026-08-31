@@ -23,3 +23,6 @@ logs/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Arquivos de extensoes de IDE nao relacionados ao projeto
+.vscode/mcp.json
