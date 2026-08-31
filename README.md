@@ -3,34 +3,41 @@
 Projeto reduzido para o fluxo essencial do AGV:
 
 - site unico para controle
-- video RGB ao vivo do Kinect v1
+- video RGB ao vivo do Kinect v1 e/ou webcam ZED
 - mapa de profundidade ao vivo
+- reconhecimento facial (cadastro, selecao e deteccao ao vivo na ZED)
 - botoes W A S D para celular
 - teclado W A S D, setas e E como esquerda no PC
 - envio serial para o Arduino
 - modo manual e modo autonomo simples por profundidade
 - um unico executavel principal: `launch_production`
 
-## Estrutura que ficou
+## Estrutura do projeto
 
 ```text
 agv/
 ├── arduino/
-│   └── sketch_may13a.ino
+│   └── sketch_may13a/
+│       └── sketch_may13a.ino
+├── pc_agv/
+│   ├── __init__.py
+│   └── iniciar_sistema.py
+├── tests/
+│   ├── test_arduino_serial.py
+│   └── test_kinect_release.py
+├── logs/                      # fotos e encodings gerados em runtime (git-ignored)
 ├── launch_production.py
 ├── launch_production.spec
-├── logs/
-├── pc_agv/
-│   ├── iniciar_sistema.py
-│   └── requirements.txt
-└── tests/
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml         # deploy no PC do AGV (Linux/Ubuntu)
+├── docker-compose.windows.yml # so o painel web, sem hardware (Windows)
+└── README.md
 ```
 
 ## O que saiu do projeto
 
-- reconhecimento facial
 - banco SQLite da IA
-- cadastro de faces
 - cliente remoto separado
 - launchers alternativos
 - builds antigos e executaveis gerados
@@ -76,6 +83,28 @@ O `docker-compose.yml` ja esta configurado para passar o Arduino (`/dev/ttyACM0`
 Kinect (barramento USB) para dentro do container. Se o Arduino aparecer em outra porta
 (ex.: `/dev/ttyACM1`), edite o campo `devices` no `docker-compose.yml`.
 
+### Rodando so o painel web no Windows (sem Kinect/Arduino)
+
+O projeto foi feito pra rodar no PC do AGV (Linux/Ubuntu) com Kinect e Arduino
+conectados. No Windows, via Docker Desktop, da pra subir o mesmo servidor web
+so pra visualizar o painel — sem hardware, o `docker-compose.yml` normal nao
+funciona (usa `network_mode: host` e caminhos `/dev/...` que nao existem no
+Docker Desktop). Para isso existe o `docker-compose.windows.yml`:
+
+```powershell
+# 1. Instale o Docker Desktop (com o backend WSL2) e abra ele uma vez
+# https://www.docker.com/products/docker-desktop/
+
+# 2. Na pasta do projeto
+docker compose -f docker-compose.windows.yml up --build
+
+# 3. Acesse no navegador
+# http://localhost:5000
+```
+
+Sem Kinect/Arduino/ZED conectados o painel abre normalmente, so que com os
+streams de video e status marcados como indisponiveis.
+
 ### Verificar logs
 
 ```bash
@@ -97,7 +126,7 @@ Instale as dependencias Python:
 
 ```bash
 cd '/home/kauan-linux/Área de trabalho/agv'
-pip3 install -r pc_agv/requirements.txt --break-system-packages
+pip3 install -r requirements.txt --break-system-packages
 ```
 
 ## Como rodar em desenvolvimento
