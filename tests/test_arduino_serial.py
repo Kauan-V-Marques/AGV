@@ -3,7 +3,7 @@ import unittest
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
-from pc_agv import iniciar_sistema as sistema
+from pc_agv.hardware import arduino
 
 
 class FakeSerial:
@@ -28,7 +28,7 @@ class FakeSerial:
 
 class TestArduinoSerial(unittest.TestCase):
     def setUp(self):
-        sistema._arduino_state["last_error"] = "erro antigo"
+        arduino._arduino_state["last_error"] = "erro antigo"
 
     def test_drain_le_feedback_do_arduino(self):
         serial = FakeSerial([
@@ -37,7 +37,7 @@ class TestArduinoSerial(unittest.TestCase):
             b"ARDUINO:STATUS:RUN\n",
         ])
 
-        lines = sistema._drain_arduino_input_locked(serial)
+        lines = arduino._drain_arduino_input_locked(serial)
 
         self.assertEqual(lines, [
             "ARDUINO:READY:v2.0",
@@ -45,17 +45,17 @@ class TestArduinoSerial(unittest.TestCase):
             "ARDUINO:STATUS:RUN",
         ])
         self.assertEqual(serial.in_waiting, 0)
-        self.assertIsNone(sistema._arduino_state["last_error"])
+        self.assertIsNone(arduino._arduino_state["last_error"])
 
     def test_linha_status_limpa_erro_anterior(self):
         serial = FakeSerial([
             b"STATUS:0,0,OK,E:0\n",
         ])
 
-        lines = sistema._drain_arduino_input_locked(serial)
+        lines = arduino._drain_arduino_input_locked(serial)
 
         self.assertEqual(lines, ["STATUS:0,0,OK,E:0"])
-        self.assertIsNone(sistema._arduino_state["last_error"])
+        self.assertIsNone(arduino._arduino_state["last_error"])
 
     def test_busca_porta_arduino_quando_glob_vazio(self):
         fake_list_ports = ModuleType("serial.tools.list_ports")
@@ -67,7 +67,7 @@ class TestArduinoSerial(unittest.TestCase):
         fake_serial = ModuleType("serial")
         fake_serial.tools = fake_tools
 
-        with patch.object(sistema.glob, "glob", return_value=[]):
+        with patch.object(arduino.glob, "glob", return_value=[]):
             with patch.dict(
                 sys.modules,
                 {
@@ -77,12 +77,12 @@ class TestArduinoSerial(unittest.TestCase):
                 },
                 clear=False,
             ):
-                ports = sistema._candidate_arduino_ports()
+                ports = arduino._candidate_arduino_ports()
 
         self.assertEqual(ports, ["/dev/ttyACM0"])
 
     def test_payload_reversa_envia_valor_negativo_para_o_arduino(self):
-        accel, dir_val = sistema._speed_steering_to_payload(-50, 0)
+        accel, dir_val = arduino.speed_steering_to_payload(-50, 0)
 
         self.assertEqual(accel, -170)
         self.assertEqual(dir_val, 0)

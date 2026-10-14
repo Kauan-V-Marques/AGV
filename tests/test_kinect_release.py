@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import patch, call
 
-from pc_agv import iniciar_sistema as sistema
+from pc_agv import util
+from pc_agv.hardware import kinect
+from pc_agv.web.rotas import app
 
 
 class TestKinectRelease(unittest.TestCase):
@@ -9,17 +11,17 @@ class TestKinectRelease(unittest.TestCase):
     def _sudo(*args):
         return call(
             ["sudo", "-n", *args],
-            stdout=sistema.subprocess.DEVNULL,
-            stderr=sistema.subprocess.DEVNULL,
+            stdout=kinect.subprocess.DEVNULL,
+            stderr=kinect.subprocess.DEVNULL,
             check=False,
         )
 
-    @patch("pc_agv.iniciar_sistema.subprocess.run")
+    @patch("pc_agv.hardware.kinect.subprocess.run")
     def test_libera_modulos_kernel_na_ordem_certa(self, run_mock):
         run_mock.return_value.returncode = 0
 
-        with patch.object(sistema, "KINECT_RELEASE_UVCVIDEO", False):
-            sistema._release_kinect_usb_claims()
+        with patch.object(kinect, "KINECT_RELEASE_UVCVIDEO", False):
+            kinect.release_kinect_usb_claims()
 
         expected = [
             self._sudo("modprobe", "-r", "gspca_kinect", "gspca_main", "snd_usb_audio"),
@@ -30,12 +32,12 @@ class TestKinectRelease(unittest.TestCase):
 
         self.assertEqual(run_mock.call_args_list, expected)
 
-    @patch("pc_agv.iniciar_sistema.subprocess.run")
+    @patch("pc_agv.hardware.kinect.subprocess.run")
     def test_libera_uvcvideo_quando_habilitado(self, run_mock):
         run_mock.return_value.returncode = 0
 
-        with patch.object(sistema, "KINECT_RELEASE_UVCVIDEO", True):
-            sistema._release_kinect_usb_claims()
+        with patch.object(kinect, "KINECT_RELEASE_UVCVIDEO", True):
+            kinect.release_kinect_usb_claims()
 
         expected = [
             self._sudo(
@@ -51,9 +53,9 @@ class TestKinectRelease(unittest.TestCase):
 
         self.assertEqual(run_mock.call_args_list, expected)
 
-    @patch("pc_agv.iniciar_sistema._release_kinect_usb_claims")
+    @patch("pc_agv.hardware.kinect.release_kinect_usb_claims")
     def test_rota_reconectar_chama_liberacao_usb(self, release_mock):
-        client = sistema.app.test_client()
+        client = app.test_client()
 
         response = client.post("/api/kinect/reconnect")
 
@@ -64,13 +66,13 @@ class TestKinectRelease(unittest.TestCase):
 
 class TestKinectTilt(unittest.TestCase):
     def setUp(self):
-        sistema._tilt_last_set_at = 0.0
-        sistema._tilt_last_target = 0.0
+        kinect._tilt_last_set_at = 0.0
+        kinect._tilt_last_target = 0.0
 
-    @patch("pc_agv.iniciar_sistema._command_kinect_tilt")
+    @patch("pc_agv.hardware.kinect.command_kinect_tilt")
     def test_rota_tilt_envia_angulo_correto(self, tilt_mock):
         tilt_mock.return_value = (True, "ok", 10.0)
-        client = sistema.app.test_client()
+        client = app.test_client()
 
         response = client.post("/api/kinect/tilt", json={"angle": 10})
 
@@ -81,11 +83,11 @@ class TestKinectTilt(unittest.TestCase):
     def test_comando_tilt_sobe_e_desce_imediato(self):
         sync_mock = unittest.mock.Mock()
 
-        with patch.object(sistema, "freenect") as freenect_mock:
+        with patch.object(kinect, "freenect") as freenect_mock:
             freenect_mock.sync_set_tilt_degs = sync_mock
 
-            ok_up, msg_up, applied_up = sistema._command_kinect_tilt(12)
-            ok_down, msg_down, applied_down = sistema._command_kinect_tilt(-12)
+            ok_up, msg_up, applied_up = kinect.command_kinect_tilt(12)
+            ok_down, msg_down, applied_down = kinect.command_kinect_tilt(-12)
 
         self.assertTrue(ok_up)
         self.assertTrue(ok_down)
@@ -98,17 +100,17 @@ class TestKinectTilt(unittest.TestCase):
     def test_correcao_tilt_pelo_acelerometro(self):
         fake_state = object()
 
-        with patch.object(sistema, "KINECT_STABILIZATION_ENABLED", True), \
-             patch.object(sistema, "KINECT_TILT_INTERVAL", 0.0), \
-             patch.object(sistema, "KINECT_TILT_DEADBAND", 0.1), \
-             patch.object(sistema, "KINECT_TILT_MIN", -18.0), \
-             patch.object(sistema, "KINECT_TILT_MAX", 18.0), \
-             patch.object(sistema, "freenect") as freenect_mock:
+        with patch.object(kinect, "KINECT_STABILIZATION_ENABLED", True), \
+             patch.object(kinect, "KINECT_TILT_INTERVAL", 0.0), \
+             patch.object(kinect, "KINECT_TILT_DEADBAND", 0.1), \
+             patch.object(kinect, "KINECT_TILT_MIN", -18.0), \
+             patch.object(kinect, "KINECT_TILT_MAX", 18.0), \
+             patch.object(kinect, "freenect") as freenect_mock:
             freenect_mock.get_tilt_state.return_value = fake_state
             freenect_mock.get_tilt_degs.return_value = 0.0
             freenect_mock.get_mks_accel.return_value = (4.0, 0.0, 8.0)
             set_tilt = freenect_mock.set_tilt_degs
-            sistema._do_tilt_body(object())
+            kinect._do_tilt_body(object())
 
         set_tilt.assert_called_once()
         requested = float(set_tilt.call_args.args[1])
@@ -116,26 +118,26 @@ class TestKinectTilt(unittest.TestCase):
 
     def test_tilt_manual_funciona_com_estabilizacao_off(self):
         fake_state = object()
-        sistema._tilt_manual_until = sistema._now() + 2.0
-        sistema._tilt_manual_target = 12.0
-        sistema._tilt_last_set_at = 0.0
+        kinect._tilt_manual_until = util.now() + 2.0
+        kinect._tilt_manual_target = 12.0
+        kinect._tilt_last_set_at = 0.0
 
-        with patch.object(sistema, "KINECT_STABILIZATION_ENABLED", False), \
-             patch.object(sistema, "KINECT_TILT_INTERVAL", 0.0), \
-             patch.object(sistema, "KINECT_TILT_DEADBAND", 0.1), \
-             patch.object(sistema, "freenect") as freenect_mock:
+        with patch.object(kinect, "KINECT_STABILIZATION_ENABLED", False), \
+             patch.object(kinect, "KINECT_TILT_INTERVAL", 0.0), \
+             patch.object(kinect, "KINECT_TILT_DEADBAND", 0.1), \
+             patch.object(kinect, "freenect") as freenect_mock:
             freenect_mock.get_tilt_state.return_value = fake_state
             freenect_mock.get_tilt_degs.return_value = 0.0
             freenect_mock.get_mks_accel.return_value = (0.0, 0.0, 0.0)
             set_tilt = freenect_mock.set_tilt_degs
-            sistema._do_tilt_body(object())
+            kinect._do_tilt_body(object())
 
         set_tilt.assert_called_once()
 
     def test_rota_stabilization_get_retorna_estado(self):
-        client = sistema.app.test_client()
+        client = app.test_client()
 
-        with patch("pc_agv.iniciar_sistema._get_kinect_stabilization", return_value=True):
+        with patch("pc_agv.hardware.kinect.get_kinect_stabilization", return_value=True):
             response = client.get("/api/kinect/stabilization")
 
         self.assertEqual(response.status_code, 200)
@@ -143,10 +145,10 @@ class TestKinectTilt(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertTrue(payload["enabled"])
 
-    @patch("pc_agv.iniciar_sistema._set_kinect_stabilization")
+    @patch("pc_agv.hardware.kinect.set_kinect_stabilization")
     def test_rota_stabilization_post_atualiza_estado(self, set_mock):
         set_mock.return_value = True
-        client = sistema.app.test_client()
+        client = app.test_client()
 
         response = client.post("/api/kinect/stabilization", json={"enabled": True})
 

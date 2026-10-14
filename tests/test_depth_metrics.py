@@ -3,7 +3,8 @@ from unittest.mock import patch
 
 import numpy as np
 
-from pc_agv import iniciar_sistema as sistema
+from pc_agv import controle, estado
+from pc_agv.visao import profundidade
 
 
 def _raw_para_metros(raw: int) -> float:
@@ -16,7 +17,7 @@ class TestDepthSegmentDistance(unittest.TestCase):
         janela = np.full((10, 10), 1000, dtype=np.uint16)
         janela[3:7, 3:7] = 500
 
-        distancia = sistema._depth_segment_distance(janela, is_mm=False)
+        distancia = profundidade.depth_segment_distance(janela, is_mm=False)
 
         self.assertAlmostEqual(distancia, _raw_para_metros(500), places=3)
 
@@ -25,20 +26,20 @@ class TestDepthSegmentDistance(unittest.TestCase):
         janela = np.full((10, 10), 1080, dtype=np.uint16)
         janela[0:2, 0:2] = 600
 
-        distancia = sistema._depth_segment_distance(janela, is_mm=False)
+        distancia = profundidade.depth_segment_distance(janela, is_mm=False)
 
         self.assertAlmostEqual(distancia, _raw_para_metros(600), places=3)
 
     def test_raw_invalido_e_ignorado(self):
         janela = np.full((10, 10), 2047, dtype=np.uint16)
 
-        self.assertIsNone(sistema._depth_segment_distance(janela, is_mm=False))
+        self.assertIsNone(profundidade.depth_segment_distance(janela, is_mm=False))
 
     def test_milimetros_retorna_obstaculo_mais_proximo(self):
         janela = np.full((10, 10), 3000, dtype=np.uint16)
         janela[5, 5] = 800
 
-        self.assertAlmostEqual(sistema._depth_segment_distance(janela, is_mm=True), 0.8)
+        self.assertAlmostEqual(profundidade.depth_segment_distance(janela, is_mm=True), 0.8)
 
 
 class TestDepthMetrics(unittest.TestCase):
@@ -46,7 +47,7 @@ class TestDepthMetrics(unittest.TestCase):
         quadro = np.full((480, 640), 1000, dtype=np.uint16)
         quadro[200:260, 300:340] = 500  # dentro da janela central (40-60% da largura)
 
-        is_mm, distancia, esquerda, centro, direita = sistema._compute_depth_metrics(quadro)
+        is_mm, distancia, esquerda, centro, direita = profundidade.compute_depth_metrics(quadro)
 
         self.assertFalse(is_mm)
         self.assertAlmostEqual(centro, _raw_para_metros(500), places=3)
@@ -57,17 +58,17 @@ class TestDepthMetrics(unittest.TestCase):
     def test_autonomo_desvia_do_obstaculo_proximo(self):
         quadro = np.full((480, 640), 1000, dtype=np.uint16)
         quadro[200:260, 300:340] = 500
-        _, distancia, esquerda, centro, direita = sistema._compute_depth_metrics(quadro)
+        _, distancia, esquerda, centro, direita = profundidade.compute_depth_metrics(quadro)
 
-        estado = {
+        leituras = {
             "kinect_ok": True,
             "distance_m": distancia,
             "left_clearance_m": esquerda,
             "center_clearance_m": centro,
             "right_clearance_m": direita,
         }
-        with patch.dict(sistema._state, estado):
-            speed, steering, reason = sistema._compute_autopilot_command()
+        with patch.dict(estado.state, leituras):
+            speed, steering, reason = controle.compute_autopilot_command()
 
         self.assertEqual(reason, "desvio-curto")
         self.assertEqual(speed, 18)
