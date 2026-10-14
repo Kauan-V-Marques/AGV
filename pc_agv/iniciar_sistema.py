@@ -2286,6 +2286,10 @@ HTML_PAGE = r'''<!doctype html>
             padding: 8px 0 4px;
         }
 
+        /* display: grid acima venceria o atributo hidden (PC mostrava o stick, celular o WASD). */
+        .pad[hidden],
+        .joystick-wrap[hidden] { display: none; }
+
         .joystick-base {
             width: min(72vw, 280px);
             aspect-ratio: 1 / 1;
@@ -3045,11 +3049,18 @@ HTML_PAGE = r'''<!doctype html>
 
     // Cancela qualquer fetch de controle em voo antes de mandar novo.
     let _controlAbort = null;
+    let _controlPending = 0;
 
-    async function sendManualCommand(source) {
+    async function sendManualCommand(source, keepalive) {
       if (controlState.mode !== "manual") return;
       const next = deriveManualCommand();
-      if (next.speed === controlState.lastSpeed && next.steering === controlState.lastSteering) return;
+      if (keepalive) {
+        // Keepalive so repete comando em movimento e nunca cancela um envio ainda em voo.
+        if (_controlPending > 0) return;
+        if (next.speed === 0 && next.steering === 0) return;
+      } else if (next.speed === controlState.lastSpeed && next.steering === controlState.lastSteering) {
+        return;
+      }
 
       controlState.lastSpeed = next.speed;
       controlState.lastSteering = next.steering;
@@ -3061,6 +3072,7 @@ HTML_PAGE = r'''<!doctype html>
 
       // Timeout de 1.5 s para não acumular requests em fila
       const timeoutId = setTimeout(() => { try { _controlAbort.abort(); } catch(e) {} }, 1500);
+      _controlPending += 1;
       try {
         await postJson("/api/control", {
           mode: "manual",
@@ -3071,9 +3083,14 @@ HTML_PAGE = r'''<!doctype html>
       } catch (error) {
         if (error.name !== "AbortError") console.error(error);
       } finally {
+        _controlPending -= 1;
         clearTimeout(timeoutId);
       }
     }
+
+    // O servidor para o agv se nenhum comando manual chegar em 2 s (watchdog).
+    // Enquanto uma tecla ou o stick estiver segurado, reenvia o comando atual.
+    setInterval(() => sendManualCommand("site-keepalive", true), 500);
 
     async function setMode(mode) {
       controlState.mode = mode;
