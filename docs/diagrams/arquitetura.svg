@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <title>Arquitetura do sistema AGV</title>
+  <defs>
+    <marker id="seta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" fill="#ffffff"/>
+  <text x="600" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">Arquitetura do sistema — AGV teleoperado</text>
+
+  <!-- ===== Coluna 1: Operador ===== -->
+  <rect x="20" y="60" width="290" height="640" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <text x="165" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#1e3a8a">Operador remoto</text>
+  <text x="165" y="108" text-anchor="middle" font-size="13" fill="#1e40af">navegador no PC ou no celular</text>
+
+  <rect x="40" y="128" width="250" height="300" rx="10" fill="#ffffff" stroke="#60a5fa"/>
+  <text x="165" y="152" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Painel web (HTML/JS)</text>
+  <text x="56" y="180" font-size="13" fill="#0f172a">• Vídeo RGB do Kinect</text>
+  <text x="56" y="202" font-size="13" fill="#0f172a">• HUD em tela cheia</text>
+  <text x="70" y="220" font-size="12" fill="#475569">telemetria fixa na tela + PiP</text>
+  <text x="56" y="244" font-size="13" fill="#0f172a">• Mapa de profundidade</text>
+  <text x="56" y="266" font-size="13" fill="#0f172a">• Webcam ZED + rosto</text>
+  <text x="56" y="288" font-size="13" fill="#0f172a">• Modo manual / autônomo</text>
+  <text x="56" y="310" font-size="13" fill="#0f172a">• WASD, setas ou joystick</text>
+  <text x="56" y="332" font-size="13" fill="#0f172a">• Parada total</text>
+  <text x="56" y="354" font-size="13" fill="#0f172a">• Tilt e estabilização</text>
+  <text x="56" y="376" font-size="13" fill="#0f172a">• Limite de velocidade</text>
+  <text x="56" y="398" font-size="13" fill="#0f172a">• Aviso de sinal fraco (RTT)</text>
+
+  <rect x="40" y="450" width="250" height="230" rx="10" fill="#ffffff" stroke="#60a5fa"/>
+  <text x="165" y="474" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Comunicação com o AGV</text>
+  <text x="56" y="502" font-size="13" fill="#0f172a">• Vídeos em MJPEG (&lt;img&gt;)</text>
+  <text x="70" y="520" font-size="12" fill="#475569">RGB 6 fps · profundidade 4 fps</text>
+  <text x="56" y="544" font-size="13" fill="#0f172a">• Telemetria por polling</text>
+  <text x="70" y="562" font-size="12" fill="#475569">0,5 s a 1,8 s conforme o RTT</text>
+  <text x="56" y="586" font-size="13" fill="#0f172a">• Comando manual por POST</text>
+  <text x="70" y="604" font-size="12" fill="#475569">velocidade e direção −100..100</text>
+  <text x="56" y="628" font-size="13" fill="#0f172a">• Parada total</text>
+  <text x="70" y="646" font-size="12" fill="#475569">zera motores e volta ao manual</text>
+
+  <!-- ===== Coluna 2: PC do AGV ===== -->
+  <rect x="370" y="60" width="470" height="640" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <text x="605" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#14532d">PC embarcado no AGV (Linux)</text>
+  <text x="605" y="108" text-anchor="middle" font-size="13" fill="#166534">launch_production.py → servidor no mesmo processo</text>
+
+  <rect x="390" y="128" width="430" height="150" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="605" y="152" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Servidor Flask — pc_agv/iniciar_sistema.py</text>
+  <text x="406" y="180" font-size="13" fill="#0f172a">MJPEG: /video · /depth_map · /zed</text>
+  <text x="406" y="202" font-size="13" fill="#0f172a">JSON: /api/status (telemetria) · /api/access_link</text>
+  <text x="406" y="224" font-size="13" fill="#0f172a">Comandos: /api/control · /api/stop · /api/settings</text>
+  <text x="406" y="246" font-size="13" fill="#0f172a">Kinect: /api/kinect/reconnect · tilt · stabilization</text>
+  <text x="406" y="268" font-size="13" fill="#0f172a">Rostos: /api/face/status · register_face · select</text>
+
+  <rect x="390" y="296" width="430" height="44" rx="10" fill="#dcfce7" stroke="#4ade80"/>
+  <text x="605" y="323" text-anchor="middle" font-size="14" font-weight="600" fill="#14532d">Estado compartilhado (_state, _control_state) com locks</text>
+
+  <rect x="390" y="358" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="492" y="380" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">agv-kinect</text>
+  <text x="402" y="402" font-size="12" fill="#334155">captura RGB + profundidade</text>
+  <text x="402" y="420" font-size="12" fill="#334155">distâncias esq/centro/dir</text>
+  <text x="402" y="438" font-size="12" fill="#334155">estabilização do tilt</text>
+
+  <rect x="615" y="358" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="717" y="380" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">agv-zed / agv-zed-face</text>
+  <text x="627" y="402" font-size="12" fill="#334155">captura OpenCV ou FFmpeg</text>
+  <text x="627" y="420" font-size="12" fill="#334155">face_recognition (HOG)</text>
+  <text x="627" y="438" font-size="12" fill="#334155">caixa + nome sobre o vídeo</text>
+
+  <rect x="390" y="472" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="492" y="494" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">agv-autopilot</text>
+  <text x="402" y="516" font-size="12" fill="#334155">regras por distância</text>
+  <text x="402" y="534" font-size="12" fill="#334155">segue / desvia / gira</text>
+  <text x="402" y="552" font-size="12" fill="#334155">ciclo de 0,18 s</text>
+
+  <rect x="615" y="472" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="717" y="494" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">agv-control</text>
+  <text x="627" y="516" font-size="12" fill="#334155">manual ou autônomo → serial</text>
+  <text x="627" y="534" font-size="12" fill="#334155">watchdog de 2 s (manual)</text>
+  <text x="627" y="552" font-size="12" fill="#334155">ciclo de 0,12 s</text>
+
+  <rect x="390" y="586" width="430" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="605" y="608" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">Execução</text>
+  <text x="406" y="630" font-size="12" fill="#334155">Docker (python:3.11-slim-bookworm) com USB e serial repassados</text>
+  <text x="406" y="650" font-size="12" fill="#334155">ou Python direto no Linux · ou executável único (PyInstaller)</text>
+  <text x="406" y="670" font-size="12" fill="#334155">logs/ guarda fotos e encodings de rosto (fora do Git)</text>
+
+  <!-- ===== Coluna 3: Hardware ===== -->
+  <rect x="900" y="60" width="280" height="640" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>
+  <text x="1040" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#7c2d12">Hardware embarcado</text>
+
+  <rect x="920" y="110" width="240" height="140" rx="10" fill="#ffffff" stroke="#fb923c"/>
+  <text x="1040" y="134" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Kinect v1 (RGB-D)</text>
+  <text x="934" y="160" font-size="12" fill="#334155">câmera RGB 640×480</text>
+  <text x="934" y="180" font-size="12" fill="#334155">profundidade por luz estruturada</text>
+  <text x="934" y="200" font-size="12" fill="#334155">motor de tilt + acelerômetro</text>
+  <text x="934" y="226" font-size="12" font-style="italic" fill="#9a3412">USB · libfreenect</text>
+
+  <rect x="920" y="270" width="240" height="100" rx="10" fill="#ffffff" stroke="#fb923c"/>
+  <text x="1040" y="294" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Câmera ZED</text>
+  <text x="934" y="320" font-size="12" fill="#334155">vídeo da traseira do AGV</text>
+  <text x="934" y="346" font-size="12" font-style="italic" fill="#9a3412">USB · V4L2 (/dev/video*)</text>
+
+  <rect x="920" y="390" width="240" height="120" rx="10" fill="#ffffff" stroke="#fb923c"/>
+  <text x="1040" y="414" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Arduino Uno</text>
+  <text x="934" y="440" font-size="12" fill="#334155">recebe "aceleração,direção"</text>
+  <text x="934" y="460" font-size="12" fill="#334155">rampa, filtro, timeout 500 ms</text>
+  <text x="934" y="486" font-size="12" font-style="italic" fill="#9a3412">USB serial · 9600 baud</text>
+
+  <rect x="920" y="550" width="240" height="130" rx="10" fill="#ffffff" stroke="#fb923c"/>
+  <text x="1040" y="574" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Tração</text>
+  <text x="934" y="600" font-size="12" fill="#334155">2 controladores BLDC</text>
+  <text x="934" y="620" font-size="12" fill="#334155">2 motores BLDC</text>
+  <text x="934" y="640" font-size="12" fill="#334155">(direito e esquerdo)</text>
+  <text x="934" y="664" font-size="12" font-style="italic" fill="#9a3412">PWM · DIR · BRAKE</text>
+
+  <!-- ===== Conexões ===== -->
+  <line x1="290" y1="200" x2="388" y2="200" stroke="#334155" stroke-width="2" marker-start="url(#seta)" marker-end="url(#seta)"/>
+  <text x="339" y="186" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">HTTP</text>
+  <text x="339" y="222" text-anchor="middle" font-size="11" fill="#475569">Wi-Fi/LAN</text>
+  <text x="339" y="238" text-anchor="middle" font-size="11" fill="#475569">porta 5000</text>
+
+  <polyline points="918,200 862,200 862,349 492,349 492,356" fill="none" stroke="#334155" stroke-width="2" marker-start="url(#seta)" marker-end="url(#seta)"/>
+  <polyline points="918,320 880,320 880,406 822,406" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#seta)"/>
+  <line x1="822" y1="520" x2="918" y2="450" stroke="#334155" stroke-width="2" marker-start="url(#seta)" marker-end="url(#seta)"/>
+  <line x1="1040" y1="512" x2="1040" y2="548" stroke="#334155" stroke-width="2" marker-end="url(#seta)"/>
+</svg>
