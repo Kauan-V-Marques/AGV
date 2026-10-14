@@ -8,8 +8,6 @@ Gera um unico binario console: dist/launch_production
 import glob
 import os
 
-import cv2
-
 _freenect_so = glob.glob(os.path.expanduser("~/.local/lib/python*/site-packages/freenect*.so"))
 if not _freenect_so:
     _freenect_so = glob.glob("/usr/lib/python*/dist-packages/freenect*.so")
@@ -25,17 +23,11 @@ for lib_path in [
     if os.path.exists(lib_path):
         _binaries.append((lib_path, "."))
 
-_datas = []
-_cascade_name = "haarcascade_frontalface_default.xml"
-_opencv_cascade = os.path.join(os.path.dirname(cv2.__file__), "data", _cascade_name)
-if os.path.exists(_opencv_cascade):
-    _datas.append((_opencv_cascade, os.path.join("cv2", "data")))
-
 a = Analysis(
     ["launch_production.py"],
     pathex=[],
     binaries=_binaries,
-    datas=_datas,
+    datas=[],
     hiddenimports=[
         "pc_agv.iniciar_sistema",
         "freenect",
