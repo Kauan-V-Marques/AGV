@@ -127,6 +127,18 @@ Desenvolver e avaliar uma interface de teleoperação baseada em Realidade Aumen
 - **RQ1:** qual é o efeito das sobreposições de RA registradas no **tempo de conclusão** e no **número de colisões** em um percurso de intralogística?
 - **RQ2:** como elas afetam a **carga de trabalho (NASA-TLX)** e a **usabilidade (SUS)**?
 
+### 4.4 Etapas da pesquisa
+
+A pesquisa é aplicada, predominantemente explicativa e de abordagem mista: mede o desempenho e a percepção dos operadores e complementa com observações e relatos.
+
+1. Levantar e comparar trabalhos que empregam RA e interfaces espaciais na teleoperação de robôs móveis.
+2. Identificar os requisitos das sobreposições: quais informações serão apresentadas e como serão registradas sobre o vídeo a partir do mapa de profundidade.
+3. Desenvolver uma prova de conceito das sobreposições integrada ao servidor de teleoperação existente.
+4. Evoluir a prova de conceito para um protótipo experimental estável.
+5. Estabelecer o procedimento de avaliação: tarefa, cenário, condições comparadas e instrumentos.
+6. Coletar dados de desempenho (tempo, colisões, intervenções, latência e taxa de quadros) e de percepção (SUS e NASA-TLX) com operadores.
+7. Analisar os resultados e confrontá-los com as hipóteses.
+
 Hipóteses, variáveis, ODS e trabalhos relacionados: [docs/documents/pesquisa-artigo.md](docs/documents/pesquisa-artigo.md).
 
 ---
