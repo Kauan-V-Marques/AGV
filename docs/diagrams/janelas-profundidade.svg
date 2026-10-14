@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="460" viewBox="0 0 1000 460" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <title>Janelas de medição de profundidade e regras do modo autônomo</title>
+  <rect width="1000" height="460" fill="#ffffff"/>
+  <text x="500" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">Como o quadro de profundidade do Kinect vira distância</text>
+
+  <!-- Quadro 640x480 desenhado em escala 0,75 (480x360) -->
+  <g transform="translate(30,60)">
+    <rect x="0" y="0" width="480" height="360" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>
+    <text x="240" y="-8" text-anchor="middle" font-size="13" fill="#334155">quadro de profundidade 640 × 480 (11 bits)</text>
+
+    <!-- faixa vertical 35%..65% da altura -->
+    <rect x="0" y="126" width="480" height="108" fill="#334155"/>
+    <line x1="0" y1="126" x2="480" y2="126" stroke="#94a3b8" stroke-dasharray="5 4"/>
+    <line x1="0" y1="234" x2="480" y2="234" stroke="#94a3b8" stroke-dasharray="5 4"/>
+    <text x="474" y="120" text-anchor="end" font-size="12" fill="#cbd5e1">35% da altura</text>
+    <text x="474" y="250" text-anchor="end" font-size="12" fill="#cbd5e1">65% da altura</text>
+
+    <!-- esquerda 10..30% -->
+    <rect x="48" y="126" width="96" height="108" fill="#38bdf8" fill-opacity="0.35" stroke="#38bdf8" stroke-width="2"/>
+    <text x="96" y="176" text-anchor="middle" font-size="14" font-weight="700" fill="#f8fafc">Esquerda</text>
+    <text x="96" y="196" text-anchor="middle" font-size="11" fill="#e2e8f0">10–30%</text>
+
+    <!-- centro 40..60% -->
+    <rect x="192" y="126" width="96" height="108" fill="#f97316" fill-opacity="0.45" stroke="#f97316" stroke-width="2"/>
+    <text x="240" y="176" text-anchor="middle" font-size="14" font-weight="700" fill="#f8fafc">Centro</text>
+    <text x="240" y="196" text-anchor="middle" font-size="11" fill="#e2e8f0">40–60%</text>
+
+    <!-- direita 70..90% -->
+    <rect x="336" y="126" width="96" height="108" fill="#38bdf8" fill-opacity="0.35" stroke="#38bdf8" stroke-width="2"/>
+    <text x="384" y="176" text-anchor="middle" font-size="14" font-weight="700" fill="#f8fafc">Direita</text>
+    <text x="384" y="196" text-anchor="middle" font-size="11" fill="#e2e8f0">70–90%</text>
+
+    <text x="240" y="300" text-anchor="middle" font-size="12" fill="#cbd5e1">fora das janelas: ignorado no cálculo</text>
+  </g>
+
+  <!-- Explicação -->
+  <g transform="translate(550,70)">
+    <text x="0" y="0" font-size="16" font-weight="700" fill="#0f172a">1. Distância de cada janela</text>
+    <text x="0" y="24" font-size="13" fill="#334155">Descarta leituras inválidas (raw fora de 100–2040),</text>
+    <text x="0" y="44" font-size="13" fill="#334155">pega o menor raw (ponto mais próximo) e converte:</text>
+    <rect x="0" y="54" width="420" height="30" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="10" y="74" font-size="13" font-family="Consolas, monospace" fill="#0f172a">m = 1 / (raw × −0,0030711016 + 3,3309495161)</text>
+    <text x="0" y="104" font-size="13" fill="#334155">Aceita apenas valores entre 0,15 m e 10 m.</text>
+    <text x="0" y="124" font-size="12" font-style="italic" fill="#475569">No raw de 11 bits, valor menor = mais perto.</text>
+
+    <text x="0" y="158" font-size="16" font-weight="700" fill="#0f172a">2. Saída para o HUD e a telemetria</text>
+    <text x="0" y="182" font-size="13" fill="#334155">Dist (frontal) = centro · Esq · Cen · Dir, em metros,</text>
+    <text x="0" y="202" font-size="13" fill="#334155">enviados ao navegador por /api/status.</text>
+
+    <text x="0" y="238" font-size="16" font-weight="700" fill="#0f172a">3. Regras do modo autônomo (centro)</text>
+    <rect x="0" y="250" width="420" height="120" rx="6" fill="#fff7ed" stroke="#fdba74"/>
+    <text x="12" y="272" font-size="13" fill="#7c2d12">&lt; 0,35 m → para e gira para o lado mais livre</text>
+    <text x="12" y="296" font-size="13" fill="#7c2d12">&lt; 0,60 m → desvio curto (velocidade 18%)</text>
+    <text x="12" y="320" font-size="13" fill="#7c2d12">&lt; 0,95 m → desvio suave (velocidade 32%)</text>
+    <text x="12" y="344" font-size="13" fill="#14532d">≥ 0,95 m → livre (48%), corrige pela diferença</text>
+    <text x="12" y="362" font-size="13" fill="#14532d">entre direita e esquerda</text>
+  </g>
+</svg>
