@@ -40,7 +40,8 @@ def _ensure_project_venv_python() -> None:
 
 _ensure_project_venv_python()
 
-from pc_agv.iniciar_sistema import _release_kinect_usb_claims, create_server
+from pc_agv.hardware.kinect import release_kinect_usb_claims
+from pc_agv.iniciar_sistema import create_server
 
 
 HOST = os.environ.get("AGV_HOST", "0.0.0.0").strip() or "0.0.0.0"
@@ -172,7 +173,7 @@ print("  agv | Site + Kinect + Arduino")
 print("=" * 60)
 
 # Remove drivers de kernel que bloqueiam o Kinect via libusb (LIBUSB_ERROR_BUSY)
-_release_kinect_usb_claims()
+release_kinect_usb_claims()
 
 if _is_server_online(URL):
     print("\nServidor ja estava online. Reutilizando processo existente.")

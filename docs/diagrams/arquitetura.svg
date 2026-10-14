@@ -15,7 +15,7 @@
   <text x="165" y="108" text-anchor="middle" font-size="13" fill="#1e40af">navegador no PC ou no celular</text>
 
   <rect x="40" y="128" width="250" height="300" rx="10" fill="#ffffff" stroke="#60a5fa"/>
-  <text x="165" y="152" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Painel web (HTML/JS)</text>
+  <text x="165" y="152" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Painel web (web/static/)</text>
   <text x="56" y="180" font-size="13" fill="#0f172a">• Vídeo RGB do Kinect</text>
   <text x="56" y="202" font-size="13" fill="#0f172a">• HUD em tela cheia</text>
   <text x="70" y="220" font-size="12" fill="#475569">telemetria fixa na tela + PiP</text>
@@ -42,10 +42,10 @@
   <!-- ===== Coluna 2: PC do AGV ===== -->
   <rect x="370" y="60" width="470" height="640" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
   <text x="605" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#14532d">Notebook embarcado no AGV (Linux)</text>
-  <text x="605" y="108" text-anchor="middle" font-size="13" fill="#166534">launch_production.py → servidor no mesmo processo</text>
+  <text x="605" y="108" text-anchor="middle" font-size="13" fill="#166534">launch_production.py → iniciar_sistema.py → runtime.py</text>
 
   <rect x="390" y="128" width="430" height="150" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="605" y="152" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Servidor Flask — pc_agv/iniciar_sistema.py</text>
+  <text x="605" y="152" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Servidor Flask — pc_agv/web/rotas.py</text>
   <text x="406" y="180" font-size="13" fill="#0f172a">MJPEG: /video · /depth_map · /zed</text>
   <text x="406" y="202" font-size="13" fill="#0f172a">JSON: /api/status (telemetria) · /api/access_link</text>
   <text x="406" y="224" font-size="13" fill="#0f172a">Comandos: /api/control · /api/stop · /api/settings</text>
@@ -53,28 +53,28 @@
   <text x="406" y="268" font-size="13" fill="#0f172a">Rostos: /api/face/status · register_face · select</text>
 
   <rect x="390" y="296" width="430" height="44" rx="10" fill="#dcfce7" stroke="#4ade80"/>
-  <text x="605" y="323" text-anchor="middle" font-size="14" font-weight="600" fill="#14532d">Estado compartilhado (_state, _control_state) com locks</text>
+  <text x="605" y="323" text-anchor="middle" font-size="14" font-weight="600" fill="#14532d">estado.py — estado compartilhado com locks</text>
 
   <rect x="390" y="358" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="492" y="380" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">agv-kinect</text>
+  <text x="492" y="380" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">hardware/kinect.py</text>
   <text x="402" y="402" font-size="12" fill="#334155">captura RGB + profundidade</text>
   <text x="402" y="420" font-size="12" fill="#334155">distâncias esq/centro/dir</text>
   <text x="402" y="438" font-size="12" fill="#334155">estabilização do tilt</text>
 
   <rect x="615" y="358" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="717" y="380" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">agv-zed / agv-zed-face</text>
+  <text x="717" y="380" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">zed.py + rostos.py</text>
   <text x="627" y="402" font-size="12" fill="#334155">captura OpenCV ou FFmpeg</text>
   <text x="627" y="420" font-size="12" fill="#334155">face_recognition (HOG)</text>
   <text x="627" y="438" font-size="12" fill="#334155">caixa + nome sobre o vídeo</text>
 
   <rect x="390" y="472" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="492" y="494" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">agv-autopilot</text>
+  <text x="492" y="494" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">controle.py · autônomo</text>
   <text x="402" y="516" font-size="12" fill="#334155">regras por distância</text>
   <text x="402" y="534" font-size="12" fill="#334155">segue / desvia / gira</text>
   <text x="402" y="552" font-size="12" fill="#334155">ciclo de 0,18 s</text>
 
   <rect x="615" y="472" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="717" y="494" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">agv-control</text>
+  <text x="717" y="494" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">controle.py · envio</text>
   <text x="627" y="516" font-size="12" fill="#334155">manual ou autônomo → serial</text>
   <text x="627" y="534" font-size="12" fill="#334155">watchdog de 2 s (manual)</text>
   <text x="627" y="552" font-size="12" fill="#334155">ciclo de 0,12 s</text>

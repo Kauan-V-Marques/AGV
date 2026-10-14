@@ -27,9 +27,11 @@ a = Analysis(
     ["launch_production.py"],
     pathex=[],
     binaries=_binaries,
-    datas=[],
+    # Painel web (HTML/CSS/JS) fica fora do Python; o Flask le de pc_agv/web/static.
+    datas=[("pc_agv/web/static", "pc_agv/web/static")],
     hiddenimports=[
         "pc_agv.iniciar_sistema",
+        "pc_agv.web.rotas",
         "freenect",
         "cv2",
         "numpy",

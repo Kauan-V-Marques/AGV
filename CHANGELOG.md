@@ -4,6 +4,12 @@ Todas as mudanças relevantes do projeto. Os marcos `v1.0.x` foram registrados n
 
 ## [Não lançado]
 
+### Refatorado
+
+- `pc_agv/iniciar_sistema.py` (3.700 linhas) dividido em módulos por responsabilidade: `config`, `estado`, `util`, `runtime`, `controle`, `telemetria`, `hardware/` (kinect, zed, arduino), `visao/` (profundidade, rostos) e `web/` (rotas, mjpeg). O arquivo virou só o ponto de entrada (65 linhas).
+- Painel web (HTML, CSS e JS) saiu do Python para `pc_agv/web/static/`.
+- Comportamento idêntico: mesmas rotas e respostas, mesmo HTML/CSS/JS e capturas do painel e do HUD iguais pixel a pixel às da versão anterior.
+
 ### Corrigido
 
 - Distâncias da profundidade (11 bits) usavam o ponto mais distante de cada janela; agora usam o mais próximo. O HUD e o modo autônomo passam a enxergar o obstáculo, não a parede atrás dele.
