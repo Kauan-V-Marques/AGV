@@ -255,7 +255,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 O sistema tem três partes:
 
 1. **Operador:** abre o painel no navegador. Recebe vídeo por MJPEG e telemetria por JSON, e envia comandos por `POST`.
-2. **Notebook embarcado (Linux):** `launch_production.py` sobe o servidor Flask (`pc_agv/iniciar_sistema.py`) no mesmo processo. O servidor roda cinco *threads* independentes, que compartilham estado protegido por *locks*.
+2. **Notebook embarcado (Linux):** `launch_production.py` chama `pc_agv/iniciar_sistema.py`, que sobe o servidor Flask (`pc_agv/web/rotas.py`) no mesmo processo. O `pc_agv/runtime.py` inicia cinco *threads* independentes, que compartilham estado (`pc_agv/estado.py`) protegido por *locks*.
 3. **Hardware:** Kinect v1 (USB/libfreenect), câmera ZED (USB/V4L2) e Arduino Uno (USB serial), que aciona os controladores BLDC.
 
 ### Fluxo resumido
@@ -265,23 +265,23 @@ Operador (navegador)
    ↓  HTTP na rede local, porta 5000
 Painel web / HUD  ──  vídeo MJPEG + telemetria JSON + comandos POST
    ↓
-Servidor Flask (pc_agv/iniciar_sistema.py)
-   ├── agv-kinect     → libfreenect → Kinect v1 (RGB + profundidade + tilt)
-   ├── agv-zed        → OpenCV/FFmpeg → câmera ZED
-   ├── agv-zed-face   → face_recognition
-   ├── agv-autopilot  → regras por distância
-   └── agv-control    → PySerial → Arduino Uno → controladores BLDC → motores
+Servidor Flask (pc_agv/web/rotas.py)
+   ├── agv-kinect     hardware/kinect.py  → libfreenect → Kinect v1 (RGB + profundidade + tilt)
+   ├── agv-zed        hardware/zed.py     → OpenCV/FFmpeg → câmera ZED
+   ├── agv-zed-face   visao/rostos.py     → face_recognition
+   ├── agv-autopilot  controle.py         → regras por distância
+   └── agv-control    controle.py         → hardware/arduino.py → PySerial → Arduino Uno → motores BLDC
 ```
 
 ### Threads do servidor
 
-| Thread | Ciclo | Função |
-|---|---|---|
-| `agv-kinect` (+ `agv-kinect-proc`) | Callback do Kinect | Recebe RGB e profundidade; uma thread separada calcula as distâncias para não travar os callbacks; ajusta o tilt |
-| `agv-zed` | Até 60 fps | Abre a ZED (OpenCV V4L2 ou FFmpeg) e desenha a caixa do rosto reconhecido |
-| `agv-zed-face` | 0,7 s | Procura a pessoa selecionada no quadro da ZED |
-| `agv-autopilot` | 0,18 s | Calcula velocidade e direção no modo autônomo |
-| `agv-control` | 0,12 s | Escolhe o comando (manual, autônomo ou watchdog) e envia ao Arduino |
+| Thread | Módulo | Ciclo | Função |
+|---|---|---|---|
+| `agv-kinect` (+ `agv-kinect-proc`) | `hardware/kinect.py` | Callback do Kinect | Recebe RGB e profundidade; uma thread separada calcula as distâncias para não travar os callbacks; ajusta o tilt |
+| `agv-zed` | `hardware/zed.py` | Até 60 fps | Abre a ZED (OpenCV V4L2 ou FFmpeg) e desenha a caixa do rosto reconhecido |
+| `agv-zed-face` | `visao/rostos.py` | 0,7 s | Procura a pessoa selecionada no quadro da ZED |
+| `agv-autopilot` | `controle.py` | 0,18 s | Calcula velocidade e direção no modo autônomo |
+| `agv-control` | `controle.py` | 0,12 s | Escolhe o comando (manual, autônomo ou watchdog) e envia ao Arduino |
 
 ---
 
@@ -363,9 +363,25 @@ AGV/
 ├── arduino/
 │   └── sketch_may13a/
 │       └── sketch_may13a.ino      # firmware do Arduino Uno (motores)
-├── pc_agv/
-│   ├── __init__.py
-│   └── iniciar_sistema.py         # servidor Flask + painel web/HUD + threads
+├── pc_agv/                        # software do notebook do AGV
+│   ├── iniciar_sistema.py         # ponto de entrada: cria e para o servidor
+│   ├── config.py                  # logging e variáveis AGV_*
+│   ├── estado.py                  # estado compartilhado entre threads + locks
+│   ├── util.py                    # clamp() e now()
+│   ├── runtime.py                 # sobe e encerra as threads
+│   ├── controle.py                # modo autônomo, modo manual e watchdog
+│   ├── telemetria.py              # JSON de /api/status
+│   ├── hardware/
+│   │   ├── kinect.py              # captura RGB-D, tilt e liberação do USB
+│   │   ├── zed.py                 # captura da câmera ZED
+│   │   └── arduino.py             # serial e protocolo aceleração,direção
+│   ├── visao/
+│   │   ├── profundidade.py        # distâncias e mapa colorido (funções puras)
+│   │   └── rostos.py              # banco de rostos e reconhecimento
+│   └── web/
+│       ├── rotas.py               # aplicação Flask e API REST
+│       ├── mjpeg.py               # streams MJPEG
+│       └── static/                # painel.html, painel.css, painel.js (painel e HUD)
 ├── tests/
 │   ├── test_arduino_serial.py     # testes da serial e do protocolo
 │   ├── test_depth_metrics.py      # testes das distâncias e do modo autônomo
@@ -388,7 +404,10 @@ AGV/
 
 | Pasta / arquivo | Finalidade |
 |---|---|
-| `pc_agv/` | Todo o software que roda no notebook do AGV: servidor, API, captura, controle e a página do painel |
+| `pc_agv/` | Todo o software que roda no notebook do AGV, dividido por responsabilidade (seção 13) |
+| `pc_agv/hardware/` | Acesso ao Kinect, à ZED e ao Arduino |
+| `pc_agv/visao/` | Processamento de imagem: profundidade e rostos |
+| `pc_agv/web/` | Servidor HTTP, streams e arquivos do painel |
 | `arduino/` | Firmware que recebe os comandos pela serial e aciona os controladores BLDC |
 | `tests/` | Testes automatizados (`unittest`) que rodam sem o hardware conectado |
 | `docs/diagrams/` | Diagramas técnicos do projeto atual |
@@ -403,16 +422,78 @@ AGV/
 | Arquivo / componente | Responsabilidade |
 |---|---|
 | `launch_production.py` | Garante instância única, abre um terminal visível para os logs, libera o Kinect, sobe o servidor, espera `/api/status` responder e abre o navegador |
-| `pc_agv/iniciar_sistema.py` → `AGVServerController` | Cria o servidor HTTP multithread e inicia/para as threads do runtime |
-| `_capture_loop` / `_compute_depth_metrics` | Captura do Kinect e cálculo das distâncias esquerda/centro/direita |
-| `_do_tilt_body` / `_command_kinect_tilt` | Estabilização do tilt pelo acelerômetro e tilt manual |
-| `_release_kinect_usb_claims` | Descarrega os módulos do kernel (`gspca_kinect` etc.) que prendem o Kinect |
-| `_zed_capture_loop` / `_zed_face_worker_loop` | Captura da ZED e reconhecimento da pessoa selecionada |
-| `_compute_autopilot_command` | Regras do modo autônomo por distância |
-| `_control_loop` / `_send_to_arduino` | Escolha do comando, watchdog, limite de velocidade e envio serial |
-| `_speed_steering_to_payload` | Converte velocidade/direção (−100..100) no protocolo `aceleração,direção` do Arduino |
-| `HTML_PAGE` | Painel web completo (HTML/CSS/JS): streams, HUD, teclado, joystick, telemetria e configurações |
+| `pc_agv/iniciar_sistema.py` | Ponto de entrada: `AGVServerController`, `create_server`, `serve` e `main` |
+| `pc_agv/config.py` | Configuração de logging e leitura de todas as variáveis `AGV_*` |
+| `pc_agv/estado.py` | Estado compartilhado (`state`, `control_state`, `autopilot_state`, `settings`), cada um com seu *lock*, e o `stop_event` |
+| `pc_agv/runtime.py` | `start_runtime` / `stop_runtime`: sobe e encerra as cinco threads |
+| `pc_agv/controle.py` | `compute_autopilot_command` (regras do autônomo), `autopilot_loop` e `control_loop` (manual, autônomo ou watchdog → Arduino) |
+| `pc_agv/telemetria.py` | `status_snapshot`: junta o estado de todos os módulos para `/api/status` |
+| `pc_agv/hardware/kinect.py` | `capture_loop`, estabilização e tilt manual (`command_kinect_tilt`), `release_kinect_usb_claims` (descarrega `gspca_kinect` etc.) e `request_reconnect` |
+| `pc_agv/hardware/zed.py` | Descoberta da ZED e `capture_loop` (OpenCV V4L2 ou FFmpeg) |
+| `pc_agv/hardware/arduino.py` | Conexão serial, `speed_steering_to_payload` (−100..100 → `aceleração,direção`), `send_to_arduino` com limite de velocidade e estado do link |
+| `pc_agv/visao/profundidade.py` | Funções puras: `depth_segment_distance`, `compute_depth_metrics` e `depth_to_colormap` |
+| `pc_agv/visao/rostos.py` | Banco de rostos, `face_worker_loop`, `offer_frame` (marcação sobre o vídeo da ZED) e `register_face` |
+| `pc_agv/web/rotas.py` | Aplicação Flask: painel e API REST; as rotas só traduzem HTTP e chamam os módulos |
+| `pc_agv/web/mjpeg.py` | `mjpeg_generator`: streams RGB, profundidade e ZED com quadro de espera |
+| `pc_agv/web/static/` | `painel.html`, `painel.css` e `painel.js`: painel, HUD, teclado, joystick, telemetria e configurações |
 | `arduino/.../sketch_may13a.ino` | Firmware: rampa de aceleração, filtro anti-tremor, anti-reversão, timeout de 500 ms, modo degradado e comandos `STOP`, `RESET`, `STATUS`, `PING` |
+
+### Dependências entre módulos
+
+Gerado a partir dos `import` reais do código. As setas apontam para o módulo usado, e não há ciclos: cada camada só depende das camadas abaixo.
+
+```mermaid
+flowchart TD
+    subgraph c1["Entrada"]
+        entrada["iniciar_sistema.py"]
+    end
+    subgraph c2["Web"]
+        rotas["web/rotas.py"]
+        mjpeg["web/mjpeg.py"]
+    end
+    subgraph c3["Orquestração"]
+        runtime["runtime.py"]
+        telemetria["telemetria.py"]
+        controle["controle.py"]
+    end
+    subgraph c4["Hardware e visão"]
+        kinect["hardware/kinect.py"]
+        zed["hardware/zed.py"]
+        arduino["hardware/arduino.py"]
+        rostos["visao/rostos.py"]
+        profundidade["visao/profundidade.py"]
+    end
+    subgraph c5["Base"]
+        estado["estado.py"]
+        config["config.py"]
+    end
+    entrada --> rotas
+    entrada --> runtime
+    rotas --> mjpeg
+    rotas --> telemetria
+    rotas -.-> c4
+    runtime --> controle
+    runtime -.-> c4
+    telemetria -.-> c4
+    controle --> arduino
+    zed --> rostos
+    kinect --> profundidade
+    mjpeg --> profundidade
+    kinect --> estado
+    zed --> estado
+    arduino --> estado
+    rostos --> estado
+    controle --> estado
+    estado --> config
+```
+
+As setas tracejadas indicam uso de módulos da camada "Hardware e visão":
+
+- `web/rotas.py` usa `kinect`, `arduino` e `rostos`;
+- `runtime.py` usa `kinect`, `zed`, `arduino` e `rostos`;
+- `telemetria.py` usa `kinect`, `arduino` e `rostos`.
+
+Quase todos os módulos também importam `config.py` (variáveis `AGV_*`) e `util.py`; essas setas foram omitidas para o diagrama ficar legível.
 
 ### API HTTP
 
@@ -752,12 +833,12 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 | Leitura do feedback do Arduino | `FakeSerial` com `ARDUINO:READY/OK/STATUS` | Linhas lidas e erro anterior limpo | Conforme esperado | ✅ |
 | Linha `STATUS` limpa erro | `FakeSerial` com `STATUS:0,0,OK,E:0` | `last_error` vira `None` | Conforme esperado | ✅ |
 | Descoberta da porta serial | `glob` vazio + `list_ports` simulado | Encontra `/dev/ttyACM0` | Conforme esperado | ✅ |
-| Ré envia valor negativo | `_speed_steering_to_payload(-50, 0)` | `(-170, 0)` | Conforme esperado | ✅ |
+| Ré envia valor negativo | `arduino.speed_steering_to_payload(-50, 0)` | `(-170, 0)` | Conforme esperado | ✅ |
 | Rota de reconexão do Kinect | `POST /api/kinect/reconnect` | 200 e liberação USB chamada | Conforme esperado | ✅ |
 | Rotas de tilt e estabilização | `POST /api/kinect/tilt`, `GET/POST /api/kinect/stabilization` | Ângulo e estado repassados | Conforme esperado | ✅ |
-| Tilt manual imediato | `_command_kinect_tilt(12)` e `(-12)` | `sync_set_tilt_degs(12)` e `(-12)` | Conforme esperado | ✅ |
-| Ordem de liberação dos módulos | `_release_kinect_usb_claims()` com `AGV_KINECT_RELEASE_UVCVIDEO` desligado e ligado | Comandos `sudo` na ordem certa; `uvcvideo` só quando ligado | Conforme esperado | ✅ |
-| Correção de tilt pelo acelerômetro / tilt manual com estabilização OFF | `_do_tilt_body` com `freenect` simulado | `set_tilt_degs` chamado | Conforme esperado | ✅ |
+| Tilt manual imediato | `kinect.command_kinect_tilt(12)` e `(-12)` | `sync_set_tilt_degs(12)` e `(-12)` | Conforme esperado | ✅ |
+| Ordem de liberação dos módulos | `kinect.release_kinect_usb_claims()` com `AGV_KINECT_RELEASE_UVCVIDEO` desligado e ligado | Comandos `sudo` na ordem certa; `uvcvideo` só quando ligado | Conforme esperado | ✅ |
+| Correção de tilt pelo acelerômetro / tilt manual com estabilização OFF | `kinect._do_tilt_body` com `freenect` simulado | `set_tilt_degs` chamado | Conforme esperado | ✅ |
 | Distância = ponto mais próximo | Janela com obstáculo (raw 500 ≈ 0,56 m) na frente de parede (raw 1000 ≈ 3,85 m) | 0,56 m | Conforme esperado | ✅ |
 | Fundo distante não apaga a janela | Obstáculo a 0,67 m com fundo além de 10 m | 0,67 m | Conforme esperado | ✅ |
 | Leituras inválidas | Janela só com raw 2047 | Sem distância (`None`) | Conforme esperado | ✅ |
@@ -867,7 +948,7 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 
 ## 28. Controle de Versão
 
-- **Branches e Pull Requests:** as mudanças entram por branches de funcionalidade (`feature/hud-fullscreen-viewer`, `chore/organizar-repositorio`, `chore/limpeza-codigo-morto`, `fix/distancia-profundidade`, `fix/controle-manual-watchdog`, `docs/readme-modelo-upx`) mescladas na `main` por PR.
+- **Branches e Pull Requests:** as mudanças entram por branches de funcionalidade (`feature/hud-fullscreen-viewer`, `chore/organizar-repositorio`, `chore/limpeza-codigo-morto`, `fix/distancia-profundidade`, `fix/controle-manual-watchdog`, `docs/readme-modelo-upx`, `refactor/modularizar`) mescladas na `main` por PR.
 - **Commits:** seguem o padrão *Conventional Commits*:
 
 ```text
@@ -886,7 +967,7 @@ docs: reformula README no padrao universal
 
 **Problema:** o Kinect não abria pela libfreenect no Linux.
 **Causa:** módulos do kernel (`gspca_kinect`, `gspca_main`) assumem o dispositivo como webcam comum.
-**Solução:** `_release_kinect_usb_claims` descarrega esses módulos com `modprobe -r`/`rmmod` antes de cada tentativa e no botão **Reconectar Kinect**.
+**Solução:** `kinect.release_kinect_usb_claims` descarrega esses módulos com `modprobe -r`/`rmmod` antes de cada tentativa e no botão **Reconectar Kinect**.
 
 ### Problema 2 — Callbacks do Kinect travando
 
@@ -939,7 +1020,7 @@ docs: reformula README no padrao universal
 ### Problema 10 — Distância mostrava a parede, não o obstáculo
 
 **Problema:** com um obstáculo a 0,56 m na frente de uma parede a 3,85 m, o HUD mostrava 3,85 m e o modo autônomo seguia como "livre" a 48% de velocidade.
-**Causa:** no formato bruto de 11 bits o valor cresce com a distância, mas `_depth_segment_distance` usava `np.max`, ou seja, o ponto **mais distante** da janela.
+**Causa:** no formato bruto de 11 bits o valor cresce com a distância, mas `depth_segment_distance` (hoje em `visao/profundidade.py`) usava `np.max`, ou seja, o ponto **mais distante** da janela.
 **Solução:** troca para `np.min`, igual ao caminho em milímetros, e 6 testes em `tests/test_depth_metrics.py` (4 deles falhavam antes da correção).
 
 ### Problema 11 — AGV parava com a tecla segurada
@@ -948,6 +1029,12 @@ docs: reformula README no padrao universal
 **Causa:** o painel só enviava comando quando ele mudava, e o watchdog do servidor para o AGV sem comando novo em 2 s.
 **Solução:** o painel reenvia o comando atual a cada 500 ms enquanto há tecla ou joystick acionado. Se a aba fecha ou a rede cai, o reenvio para e o watchdog continua protegendo. Na mesma correção, o PC deixou de mostrar o joystick e o celular deixou de mostrar o WASD (o `display: grid` do CSS vencia o atributo `hidden`).
 
+
+### Problema 12 — Código em um único arquivo de 3.700 linhas
+
+**Problema:** todo o software (servidor, hardware, regras e o painel HTML/CSS/JS) estava em `pc_agv/iniciar_sistema.py`, o que dificultava entender, testar e dividir o trabalho na equipe.
+**Causa:** o projeto cresceu adicionando funções ao mesmo arquivo, com estado global compartilhado.
+**Solução:** divisão em módulos por responsabilidade (`config`, `estado`, `hardware/`, `visao/`, `controle`, `web/`) e painel em `web/static/`. A lógica foi copiada sem alteração, e a equivalência foi verificada contra a versão anterior: mesmas 19 rotas, mesmas chaves em `/api/status`, mesmo HTML/CSS/JS, mesmas respostas de erro no cadastro de rosto, capturas do painel e do HUD idênticas pixel a pixel e os 19 testes passando.
 ---
 
 ## 30. Melhorias Futuras
@@ -958,7 +1045,7 @@ docs: reformula README no padrao universal
 - Chave para alternar **HUD** × **HUD + RA** durante o experimento.
 - Autenticação simples no painel.
 - Incluir FFmpeg na imagem Docker.
-- Dividir `pc_agv/iniciar_sistema.py` em módulos (configuração, hardware, visão, controle e web) e tirar o HTML/CSS/JS do Python.
+- Trocar os dicionários globais de `estado.py` por classes de serviço com injeção de dependência, facilitando testes isolados.
 
 ---
 
