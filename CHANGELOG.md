@@ -4,6 +4,21 @@ Todas as mudanças relevantes do projeto. Os marcos `v1.0.x` foram registrados n
 
 ## [Não lançado]
 
+### Corrigido
+
+- Distâncias da profundidade (11 bits) usavam o ponto mais distante de cada janela; agora usam o mais próximo. O HUD e o modo autônomo passam a enxergar o obstáculo, não a parede atrás dele.
+- No modo manual, o AGV parava após 2 s com a tecla segurada; o painel agora reenvia o comando a cada 500 ms (o watchdog continua parando o AGV se o navegador cair).
+- PC mostrava o joystick e celular mostrava o WASD (`display: grid` vencia o atributo `hidden`).
+
+### Removido
+
+- Código morto do reconhecimento facial antigo (Haar cascade), rota comentada, `rgb_raw` e `AGV_CAPTURE_LOOP_SECONDS`.
+- `.vscode/settings.json` deixa de ser versionado.
+
+### Testes
+
+- Testes do Kinect atualizados e independentes do `python3-freenect`; novos testes de distância e do modo autônomo (19 testes, todos passando).
+
 ### Documentação
 
 - README reescrito no modelo da disciplina UPX — Realidade Aumentada (`dr-ohata/upx-modelo`).

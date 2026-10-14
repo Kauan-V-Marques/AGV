@@ -324,7 +324,7 @@ flowchart LR
 
 1. O Kinect entrega um quadro de profundidade 640×480 em 11 bits.
 2. O servidor considera só a faixa entre 35% e 65% da altura e recorta **três janelas**: esquerda (10–30% da largura), centro (40–60%) e direita (70–90%).
-3. Em cada janela descarta leituras inválidas, pega um valor representativo e o converte em metros pela fórmula da comunidade OpenKinect. Só aceita valores entre 0,15 m e 10 m.
+3. Em cada janela descarta leituras inválidas e pega o **ponto mais próximo**. No formato bruto de 11 bits, que é o menor valor, o servidor o converte em metros pela fórmula da comunidade OpenKinect. Só aceita valores entre 0,15 m e 10 m.
 4. A **distância frontal** é a da janela central. Se ela não existir, usa a menor das três.
 5. Esses valores vão para a telemetria, para o HUD e para as regras do modo autônomo.
 
@@ -355,6 +355,7 @@ AGV/
 │   └── iniciar_sistema.py         # servidor Flask + painel web/HUD + threads
 ├── tests/
 │   ├── test_arduino_serial.py     # testes da serial e do protocolo
+│   ├── test_depth_metrics.py      # testes das distâncias e do modo autônomo
 │   └── test_kinect_release.py     # testes de liberação USB e tilt do Kinect
 ├── docs/
 │   ├── diagrams/                  # arquitetura e janelas de profundidade (SVG)
@@ -714,7 +715,7 @@ Painel principal (http://IP_DO_AGV:5000)
 ![Painel principal](docs/images/painel-web.png)
 
 - **Finalidade:** central de teleoperação do AGV.
-- **Elementos:** chips de estado, link para outro dispositivo, vídeos RGB/profundidade/ZED, botões de modo e parada total, cadastro de rostos, WASD e joystick, telemetria e configurações.
+- **Elementos:** chips de estado, link para outro dispositivo, vídeos RGB/profundidade/ZED, botões de modo e parada total, cadastro de rostos, controle manual (WASD no PC, joystick no celular), telemetria e configurações.
 - **Ação do usuário:** escolher o modo, dirigir, acompanhar a telemetria e abrir o HUD.
 
 ### Visualizador HUD em tela cheia
@@ -742,10 +743,16 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 | Rota de reconexão do Kinect | `POST /api/kinect/reconnect` | 200 e liberação USB chamada | Conforme esperado | ✅ |
 | Rotas de tilt e estabilização | `POST /api/kinect/tilt`, `GET/POST /api/kinect/stabilization` | Ângulo e estado repassados | Conforme esperado | ✅ |
 | Tilt manual imediato | `_command_kinect_tilt(12)` e `(-12)` | `sync_set_tilt_degs(12)` e `(-12)` | Conforme esperado | ✅ |
-| Ordem de liberação dos módulos | `_release_kinect_usb_claims()` | Lista de comandos `sudo` | Teste espera `uvcvideo`, que hoje só é liberado com `AGV_KINECT_RELEASE_UVCVIDEO=1` | ❌ teste desatualizado |
-| Correção de tilt pelo acelerômetro / tilt manual com estabilização OFF | `_do_tilt_body` com acelerômetro simulado | `set_tilt_degs` chamado | Erro: os testes precisam do `python3-freenect` instalado (indisponível no Windows) | ⚠️ só em Linux com freenect |
+| Ordem de liberação dos módulos | `_release_kinect_usb_claims()` com `AGV_KINECT_RELEASE_UVCVIDEO` desligado e ligado | Comandos `sudo` na ordem certa; `uvcvideo` só quando ligado | Conforme esperado | ✅ |
+| Correção de tilt pelo acelerômetro / tilt manual com estabilização OFF | `_do_tilt_body` com `freenect` simulado | `set_tilt_degs` chamado | Conforme esperado | ✅ |
+| Distância = ponto mais próximo | Janela com obstáculo (raw 500 ≈ 0,56 m) na frente de parede (raw 1000 ≈ 3,85 m) | 0,56 m | Conforme esperado | ✅ |
+| Fundo distante não apaga a janela | Obstáculo a 0,67 m com fundo além de 10 m | 0,67 m | Conforme esperado | ✅ |
+| Leituras inválidas | Janela só com raw 2047 | Sem distância (`None`) | Conforme esperado | ✅ |
+| Formato em milímetros | Janela com 800 mm entre 3000 mm | 0,80 m | Conforme esperado | ✅ |
+| Obstáculo só no centro | Quadro 640×480 com obstáculo na janela central | Centro 0,56 m; esquerda e direita 3,85 m | Conforme esperado | ✅ |
+| Autônomo desvia | Mesmo quadro no modo autônomo | `desvio-curto`, velocidade 18%, com giro | Conforme esperado | ✅ |
 
-**Resumo:** 12 testes, 9 aprovados, 1 desatualizado e 2 dependentes do `python3-freenect`.
+**Resumo:** 19 testes, todos aprovados. Os testes simulam a serial e o `freenect`, então rodam em qualquer sistema, sem o hardware.
 
 ### 22.2 Testes do painel sem hardware
 
@@ -755,6 +762,9 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 | Kinect ausente | Abrir o painel sem `python3-freenect` | Mensagem clara no vídeo e na telemetria | "Aguardando Kinect RGB — python3-freenect nao disponivel no sistema" | ✅ |
 | ZED ausente | Abrir o painel sem `/dev/video*` | Mensagem no card da ZED | "Aguardando webcam ZED — nao abriu webcam ZED" | ✅ |
 | Serial desativada | `AGV_ARDUINO_ENABLED=0` | Telemetria indica serial desligada | "serial desativada por ambiente" | ✅ |
+| Tecla segurada além do watchdog | Painel real em navegador *headless*: W pressionado sem soltar, `active_speed` lido em 0,5/1,5/2,5/3,5 s | Velocidade mantida enquanto W estiver pressionado | 100, 100, 100, 100 (antes da correção: 100, 100, 0, 0) | ✅ |
+| Navegador cai com W pressionado | Encerrar o navegador com W pressionado | Watchdog zera os motores | `active_speed` = 0 logo após o encerramento | ✅ |
+| Controle certo para cada dispositivo | Abrir o painel no PC e com *user agent* de celular | PC só WASD; celular só joystick | Conforme esperado | ✅ |
 | Abrir o HUD | Clicar em **⛶ HUD** | Vídeo em tela cheia com métricas e PiP | Ver captura na seção 21 | ✅ |
 
 ### 22.3 Testes com o AGV
@@ -787,8 +797,6 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 
 - **As sobreposições registradas de obstáculos ainda não existem.** O HUD atual mostra números fixos na tela; contorno, distância ancorada e zona de segurança são o próximo passo (RF20–RF22).
 - **Profundidade e RGB não estão alinhados entre si.** O Kinect v1 tem as duas câmeras deslocadas, e o código ainda não registra uma sobre a outra; isso é pré-requisito para desenhar sobre o obstáculo no vídeo.
-- **Possível erro na escolha do ponto da janela de profundidade.** No formato bruto de 11 bits, `_depth_segment_distance` usa o **maior** valor bruto da janela. Pela fórmula de conversão, valor maior = mais longe. Logo, com um obstáculo próximo na frente de uma parede, a janela tende a informar a distância da parede. Uma janela com algum ponto além de ~10 m é descartada inteira. No formato em milímetros o código usa o menor valor, o comportamento esperado. Precisa ser confirmado com o AGV e corrigido.
-- **Watchdog com tecla segurada (a confirmar no AGV):** o painel só envia um comando manual quando ele **muda**, e o servidor para o AGV se não chegar comando novo em 2 s. Pela leitura do código, segurar a mesma tecla (ou o joystick parado na mesma posição) por mais de 2 s deve fazer o AGV parar até o comando mudar.
 - **Faixa de medição limitada:** só a faixa central (35–65% da altura) é medida. Obstáculos baixos (paletes no chão) ou altos podem não aparecer nas distâncias.
 - **Precisão do Kinect v1 cai com a distância** (Wasenmüller e Stricker, 2016), e ele não mede bem a poucos centímetros nem sob luz solar forte.
 - **Vídeo com baixa taxa de quadros** (6 fps RGB, 4 fps profundidade por padrão) para caber em redes fracas, o que aumenta a latência percebida.
@@ -799,7 +807,8 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 - **A imagem Docker não inclui FFmpeg:** dentro do container a ZED só abre pelo OpenCV.
 - **1ª build lenta:** o `face-recognition` compila o dlib do código-fonte.
 - **RTT não é registrado:** a latência só aparece como aviso na tela; a pesquisa precisa dela em log (RF24).
-- **Testes automatizados:** 1 teste desatualizado e 2 que só rodam com `python3-freenect` (seção 22.1).
+- **Distância pelo pixel mais próximo:** cada janela usa o ponto mais próximo; um pixel isolado com ruído pode gerar um alerta falso. Ainda não há filtro (ex.: percentil ou mediana).
+- **Os testes não cobrem o JavaScript do painel:** o comportamento do teclado e do HUD foi verificado em navegador *headless*, não por testes automatizados.
 
 ---
 
@@ -845,7 +854,7 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 
 ## 28. Controle de Versão
 
-- **Branches e Pull Requests:** as mudanças entram por branches de funcionalidade (`feature/hud-fullscreen-viewer`, `chore/organizar-repositorio`, `docs/readme-modelo-upx`) mescladas na `main` por PR.
+- **Branches e Pull Requests:** as mudanças entram por branches de funcionalidade (`feature/hud-fullscreen-viewer`, `chore/organizar-repositorio`, `chore/limpeza-codigo-morto`, `fix/distancia-profundidade`, `fix/controle-manual-watchdog`, `docs/readme-modelo-upx`) mescladas na `main` por PR.
 - **Commits:** seguem o padrão *Conventional Commits*:
 
 ```text
@@ -914,17 +923,29 @@ docs: reformula README no padrao universal
 **Causa:** falha de hardware da placa.
 **Solução:** substituição por um notebook Linux (x86_64) embarcado no AGV, ligado ao Kinect, à ZED e ao Arduino por USB. Todo o software atual foi desenvolvido, testado e validado no notebook; por isso o executável do PyInstaller usa as bibliotecas `x86_64-linux-gnu`.
 
+### Problema 10 — Distância mostrava a parede, não o obstáculo
+
+**Problema:** com um obstáculo a 0,56 m na frente de uma parede a 3,85 m, o HUD mostrava 3,85 m e o modo autônomo seguia como "livre" a 48% de velocidade.
+**Causa:** no formato bruto de 11 bits o valor cresce com a distância, mas `_depth_segment_distance` usava `np.max`, ou seja, o ponto **mais distante** da janela.
+**Solução:** troca para `np.min`, igual ao caminho em milímetros, e 6 testes em `tests/test_depth_metrics.py` (4 deles falhavam antes da correção).
+
+### Problema 11 — AGV parava com a tecla segurada
+
+**Problema:** segurando W, o AGV andava e parava sozinho depois de 2 s.
+**Causa:** o painel só enviava comando quando ele mudava, e o watchdog do servidor para o AGV sem comando novo em 2 s.
+**Solução:** o painel reenvia o comando atual a cada 500 ms enquanto há tecla ou joystick acionado. Se a aba fecha ou a rede cai, o reenvio para e o watchdog continua protegendo. Na mesma correção, o PC deixou de mostrar o joystick e o celular deixou de mostrar o WASD (o `display: grid` do CSS vencia o atributo `hidden`).
+
 ---
 
 ## 30. Melhorias Futuras
 
 - Alinhar profundidade e RGB e desenhar sobre o vídeo o **contorno dos obstáculos**, a **distância ancorada** e a **zona de segurança no piso**.
-- Corrigir a escolha do ponto mais próximo nas janelas de profundidade (seção 24) e ampliar a área medida.
+- Filtrar ruído nas janelas de profundidade (percentil/mediana) e ampliar a área medida.
 - Registrar em arquivo **tempo, colisões, intervenções, RTT e FPS** de cada sessão.
 - Chave para alternar **HUD** × **HUD + RA** durante o experimento.
 - Autenticação simples no painel.
 - Incluir FFmpeg na imagem Docker.
-- Atualizar os testes desatualizados e criar testes para as métricas de profundidade.
+- Dividir `pc_agv/iniciar_sistema.py` em módulos (configuração, hardware, visão, controle e web) e tirar o HTML/CSS/JS do Python.
 
 ---
 

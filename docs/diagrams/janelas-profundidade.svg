@@ -37,11 +37,11 @@
   <g transform="translate(550,70)">
     <text x="0" y="0" font-size="16" font-weight="700" fill="#0f172a">1. Distância de cada janela</text>
     <text x="0" y="24" font-size="13" fill="#334155">Descarta leituras inválidas (raw fora de 100–2040),</text>
-    <text x="0" y="44" font-size="13" fill="#334155">usa o maior raw da janela e converte para metros:</text>
+    <text x="0" y="44" font-size="13" fill="#334155">pega o menor raw (ponto mais próximo) e converte:</text>
     <rect x="0" y="54" width="420" height="30" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
     <text x="10" y="74" font-size="13" font-family="Consolas, monospace" fill="#0f172a">m = 1 / (raw × −0,0030711016 + 3,3309495161)</text>
     <text x="0" y="104" font-size="13" fill="#334155">Aceita apenas valores entre 0,15 m e 10 m.</text>
-    <text x="0" y="124" font-size="12" font-style="italic" fill="#b45309">Atenção: maior raw = ponto mais distante (ver Limitações).</text>
+    <text x="0" y="124" font-size="12" font-style="italic" fill="#475569">No raw de 11 bits, valor menor = mais perto.</text>
 
     <text x="0" y="158" font-size="16" font-weight="700" fill="#0f172a">2. Saída para o HUD e a telemetria</text>
     <text x="0" y="182" font-size="13" fill="#334155">Dist (frontal) = centro · Esq · Cen · Dir, em metros,</text>
