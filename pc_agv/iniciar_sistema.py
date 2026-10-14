@@ -1128,7 +1128,8 @@ def _depth_segment_distance(depth_seg: np.ndarray, is_mm: bool) -> Optional[floa
     valid = depth_seg[(depth_seg > 100) & (depth_seg < 2040)]
     if not valid.size:
         return None
-    raw = float(np.max(valid))
+    # No formato 11 bits o valor bruto cresce com a distancia: o menor raw e o ponto mais proximo.
+    raw = float(np.min(valid))
     denom = raw * -0.0030711016 + 3.3309495161
     if denom <= 0.0:
         return None
