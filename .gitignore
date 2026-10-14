@@ -24,5 +24,6 @@ logs/*
 .DS_Store
 Thumbs.db
 
-# Arquivos de extensoes de IDE nao relacionados ao projeto
-.vscode/mcp.json
+# Configuracoes pessoais de IDE/extensoes (nao fazem parte do projeto)
+.vscode/
+.idea/
