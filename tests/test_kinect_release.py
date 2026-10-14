@@ -5,50 +5,51 @@ from pc_agv import iniciar_sistema as sistema
 
 
 class TestKinectRelease(unittest.TestCase):
+    @staticmethod
+    def _sudo(*args):
+        return call(
+            ["sudo", "-n", *args],
+            stdout=sistema.subprocess.DEVNULL,
+            stderr=sistema.subprocess.DEVNULL,
+            check=False,
+        )
+
     @patch("pc_agv.iniciar_sistema.subprocess.run")
     def test_libera_modulos_kernel_na_ordem_certa(self, run_mock):
         run_mock.return_value.returncode = 0
 
-        sistema._release_kinect_usb_claims()
+        with patch.object(sistema, "KINECT_RELEASE_UVCVIDEO", False):
+            sistema._release_kinect_usb_claims()
 
         expected = [
-            call(
-                [
-                    "sudo", "-n", "modprobe", "-r",
-                    "gspca_kinect", "gspca_main", "uvcvideo", "snd_usb_audio",
-                    "videobuf2_v4l2", "videobuf2_vmalloc", "videobuf2_common", "videodev", "mc",
-                ],
-                stdout=sistema.subprocess.DEVNULL,
-                stderr=sistema.subprocess.DEVNULL,
-                check=False,
-            ),
-            call(
-                ["sudo", "-n", "rmmod", "gspca_kinect"],
-                stdout=sistema.subprocess.DEVNULL,
-                stderr=sistema.subprocess.DEVNULL,
-                check=False,
-            ),
-            call(
-                ["sudo", "-n", "rmmod", "gspca_main"],
-                stdout=sistema.subprocess.DEVNULL,
-                stderr=sistema.subprocess.DEVNULL,
-                check=False,
-            ),
-            call(
-                ["sudo", "-n", "rmmod", "uvcvideo"],
-                stdout=sistema.subprocess.DEVNULL,
-                stderr=sistema.subprocess.DEVNULL,
-                check=False,
-            ),
-            call(
-                ["sudo", "-n", "rmmod", "snd_usb_audio"],
-                stdout=sistema.subprocess.DEVNULL,
-                stderr=sistema.subprocess.DEVNULL,
-                check=False,
-            ),
+            self._sudo("modprobe", "-r", "gspca_kinect", "gspca_main", "snd_usb_audio"),
+            self._sudo("rmmod", "gspca_kinect"),
+            self._sudo("rmmod", "gspca_main"),
+            self._sudo("rmmod", "snd_usb_audio"),
         ]
 
-        self.assertEqual(run_mock.call_args_list[: len(expected)], expected)
+        self.assertEqual(run_mock.call_args_list, expected)
+
+    @patch("pc_agv.iniciar_sistema.subprocess.run")
+    def test_libera_uvcvideo_quando_habilitado(self, run_mock):
+        run_mock.return_value.returncode = 0
+
+        with patch.object(sistema, "KINECT_RELEASE_UVCVIDEO", True):
+            sistema._release_kinect_usb_claims()
+
+        expected = [
+            self._sudo(
+                "modprobe", "-r",
+                "gspca_kinect", "gspca_main", "snd_usb_audio",
+                "uvcvideo", "videobuf2_v4l2", "videobuf2_vmalloc", "videobuf2_common", "videodev", "mc",
+            ),
+            self._sudo("rmmod", "gspca_kinect"),
+            self._sudo("rmmod", "gspca_main"),
+            self._sudo("rmmod", "snd_usb_audio"),
+            self._sudo("rmmod", "uvcvideo"),
+        ]
+
+        self.assertEqual(run_mock.call_args_list, expected)
 
     @patch("pc_agv.iniciar_sistema._release_kinect_usb_claims")
     def test_rota_reconectar_chama_liberacao_usb(self, release_mock):
@@ -102,11 +103,11 @@ class TestKinectTilt(unittest.TestCase):
              patch.object(sistema, "KINECT_TILT_DEADBAND", 0.1), \
              patch.object(sistema, "KINECT_TILT_MIN", -18.0), \
              patch.object(sistema, "KINECT_TILT_MAX", 18.0), \
-             patch.object(sistema.freenect, "update_tilt_state"), \
-             patch.object(sistema.freenect, "get_tilt_state", return_value=fake_state), \
-             patch.object(sistema.freenect, "get_tilt_degs", return_value=0.0), \
-             patch.object(sistema.freenect, "get_mks_accel", return_value=(4.0, 0.0, 8.0)), \
-             patch.object(sistema.freenect, "set_tilt_degs") as set_tilt:
+             patch.object(sistema, "freenect") as freenect_mock:
+            freenect_mock.get_tilt_state.return_value = fake_state
+            freenect_mock.get_tilt_degs.return_value = 0.0
+            freenect_mock.get_mks_accel.return_value = (4.0, 0.0, 8.0)
+            set_tilt = freenect_mock.set_tilt_degs
             sistema._do_tilt_body(object())
 
         set_tilt.assert_called_once()
@@ -122,11 +123,11 @@ class TestKinectTilt(unittest.TestCase):
         with patch.object(sistema, "KINECT_STABILIZATION_ENABLED", False), \
              patch.object(sistema, "KINECT_TILT_INTERVAL", 0.0), \
              patch.object(sistema, "KINECT_TILT_DEADBAND", 0.1), \
-             patch.object(sistema.freenect, "update_tilt_state"), \
-             patch.object(sistema.freenect, "get_tilt_state", return_value=fake_state), \
-             patch.object(sistema.freenect, "get_tilt_degs", return_value=0.0), \
-             patch.object(sistema.freenect, "get_mks_accel", return_value=(0.0, 0.0, 0.0)), \
-             patch.object(sistema.freenect, "set_tilt_degs") as set_tilt:
+             patch.object(sistema, "freenect") as freenect_mock:
+            freenect_mock.get_tilt_state.return_value = fake_state
+            freenect_mock.get_tilt_degs.return_value = 0.0
+            freenect_mock.get_mks_accel.return_value = (0.0, 0.0, 0.0)
+            set_tilt = freenect_mock.set_tilt_degs
             sistema._do_tilt_body(object())
 
         set_tilt.assert_called_once()
