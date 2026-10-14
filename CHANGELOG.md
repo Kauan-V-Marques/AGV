@@ -9,6 +9,7 @@ Todas as mudanças relevantes do projeto. Os marcos `v1.0.x` foram registrados n
 - README reescrito no modelo da disciplina UPX — Realidade Aumentada (`dr-ohata/upx-modelo`).
 - Pasta `docs/` com diagramas (`arquitetura.svg`, `janelas-profundidade.svg`), capturas do painel e do HUD e a síntese do artigo científico.
 - Registro das limitações conhecidas, incluindo a análise da escolha do ponto nas janelas de profundidade de 11 bits.
+- Registro da troca do computador embarcado: a Raspberry Pi 5 original queimou e o AGV passou a usar um notebook Linux.
 
 ## 2026-08-31 — Organização e HUD
 

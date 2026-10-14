@@ -41,7 +41,7 @@
 
   <!-- ===== Coluna 2: PC do AGV ===== -->
   <rect x="370" y="60" width="470" height="640" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
-  <text x="605" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#14532d">PC embarcado no AGV (Linux)</text>
+  <text x="605" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#14532d">Notebook embarcado no AGV (Linux)</text>
   <text x="605" y="108" text-anchor="middle" font-size="13" fill="#166534">launch_production.py → servidor no mesmo processo</text>
 
   <rect x="390" y="128" width="430" height="150" rx="10" fill="#ffffff" stroke="#4ade80"/>

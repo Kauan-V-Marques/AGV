@@ -56,8 +56,8 @@
 |---|---|
 | **Projeto** | AGV Teleoperado com Realidade Aumentada |
 | **Título da pesquisa** | Uso de Realidade Aumentada na teleoperação de um AGV: apoio à navegação remota em intralogística |
-| **Equipe** | ⚠️ PREENCHER: nome da equipe |
-| **Curso** | ⚠️ PREENCHER: curso da equipe |
+| **Equipe** | AGV |
+| **Curso** | Engenharia de Computação |
 | **Disciplina** | UPX — Realidade Aumentada |
 | **Professor** | Prof. Daniel Ohata |
 | **Instituição** | Centro Universitário Facens — Sorocaba/SP |
@@ -69,7 +69,7 @@
 |---|---|---|
 | Jorge Henrique Gobbo Berenschot | 235317 | Scrum Master: organização das sprints e acompanhamento das entregas. ⚠️ PREENCHER: responsabilidades técnicas |
 | Kauan Victor Marques | 235003 | Servidor Python/Flask, painel web e HUD de telemetria, integração com Kinect/ZED/Arduino, Docker e organização do repositório |
-| Pedro Henrique Santana de Oliveira | 23705 ⚠️ CONFERIR RA | ⚠️ PREENCHER |
+| Pedro Henrique Santana de Oliveira | 23705 | ⚠️ PREENCHER |
 | Gabriel Pelincel Ramalho | 222434 | ⚠️ PREENCHER |
 | Felipe Matias de Jesus | 226705 | ⚠️ PREENCHER |
 
@@ -79,7 +79,7 @@
 
 AGVs (veículos guiados automaticamente) movimentam materiais em armazéns e fábricas. Mesmo quando operam sozinhos, eles **precisam de um operador humano em situações de exceção**: um obstáculo inesperado no corredor, uma área não mapeada ou uma falha de percepção. Nesses momentos o operador assume o veículo **remotamente, olhando apenas para o vídeo da câmera embarcada**. Esse vídeo é plano: dificulta estimar a que distância estão prateleiras, paletes e pessoas, e favorece colisões.
 
-Este projeto é um **AGV de baixo custo** (Kinect v1 como sensor RGB-D, Arduino Uno controlando dois motores BLDC e um PC Linux embarcado) com uma **interface de teleoperação que roda no navegador**, no PC ou no celular, sem instalar aplicativo. O servidor embarcado transmite o vídeo RGB, o mapa de profundidade e a telemetria, recebe os comandos de direção e os repassa ao Arduino. Há também um modo autônomo simples, que desvia de obstáculos usando a profundidade.
+Este projeto é um **AGV de baixo custo** (Kinect v1 como sensor RGB-D, Arduino Uno controlando dois motores BLDC e um notebook Linux embarcado) com uma **interface de teleoperação que roda no navegador**, no PC ou no celular, sem instalar aplicativo. O servidor embarcado transmite o vídeo RGB, o mapa de profundidade e a telemetria, recebe os comandos de direção e os repassa ao Arduino. Há também um modo autônomo simples, que desvia de obstáculos usando a profundidade.
 
 A **Realidade Aumentada entra como exibição por vídeo (*video see-through*)**: o operador vê o ambiente remoto pelo vídeo do Kinect, e o sistema compõe informações virtuais sobre esse vídeo. Hoje isso já existe em duas formas: um **HUD em tela cheia** com distâncias medidas pelo sensor de profundidade (elementos fixos na tela) e uma **caixa com o nome da pessoa reconhecida desenhada sobre ela** no vídeo da câmera ZED (elemento registrado na cena). O próximo passo da pesquisa é **registrar sobre o vídeo os próprios obstáculos**: contorno, distância ancorada e zona de segurança. Em seguida, medir com operadores se isso reduz colisões, tempo e carga de trabalho (ver [síntese da pesquisa](docs/documents/pesquisa-artigo.md)).
 
@@ -190,7 +190,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | RNF05 | Segurança operacional | O AGV deve parar sozinho se os comandos deixarem de chegar (2 s no servidor, 500 ms no Arduino); o firmware impede inverter o sentido do motor em alta velocidade |
 | RNF06 | Disponibilidade | Kinect, ZED e Arduino são reconectados automaticamente; no Docker o container reinicia (`restart: unless-stopped`) |
 | RNF07 | Usabilidade | O operador deve conseguir dirigir só com WASD/setas ou com um dedo no joystick; o HUD fecha com **ESC** |
-| RNF08 | Privacidade | Fotos e descritores de rosto ficam apenas em `logs/` no PC do AGV e não são versionados |
+| RNF08 | Privacidade | Fotos e descritores de rosto ficam apenas em `logs/` no notebook do AGV e não são versionados |
 | RNF09 | Segurança de rede | O painel não tem autenticação: deve ser usado apenas em rede local confiável |
 
 ---
@@ -211,7 +211,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | FFmpeg | Pacote da distribuição (opcional) | Captura alternativa da ZED quando o OpenCV não abre o dispositivo |
 | HTML5, CSS e JavaScript | — (sem frameworks) | Painel web e HUD, embutidos em `HTML_PAGE` |
 | Arduino (C++) | ⚠️ PREENCHER: versão da Arduino IDE usada | Firmware de controle dos motores |
-| Docker Engine + Compose | Compose v2 (`docker compose`) | Empacotamento e execução no PC do AGV |
+| Docker Engine + Compose | Compose v2 (`docker compose`) | Empacotamento e execução no notebook do AGV |
 | PyInstaller | 6.x | Executável único `dist/launch_production` |
 | Git / GitHub | — | Controle de versão e documentação |
 
@@ -226,10 +226,12 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | Microcontrolador | Arduino Uno | Serial USB 9600 baud; PWM nos pinos 5 e 9 | Recebe `aceleração,direção` e aciona os motores |
 | Controladores de motor | 2× controlador BLDC YWMJZEU | Entradas PWM, DIR e BRAKE | Potência dos motores direito e esquerdo |
 | Motores | 2× motor BLDC ⚠️ PREENCHER modelo | Tração diferencial | Movimento do AGV |
-| PC embarcado | ⚠️ PREENCHER fabricante/modelo | Linux x86_64 ⚠️ PREENCHER distribuição e versão (ex.: Ubuntu 24.04) | Roda o servidor, Kinect, ZED e serial |
+| Computador embarcado | Notebook ⚠️ PREENCHER fabricante/modelo | Linux x86_64 ⚠️ PREENCHER distribuição e versão (ex.: Ubuntu 24.04) | Roda o servidor, Kinect, ZED e serial. Todo o software atual foi desenvolvido, testado e validado nele |
 | Dispositivo do operador | ⚠️ PREENCHER (PC e/ou celular usados nos testes) | Navegador com Wi-Fi | Painel web e HUD |
 
-> A tabela só lista equipamentos que o código e o firmware usam. Modelos exatos devem ser conferidos no AGV físico.
+> **Raspberry Pi 5 → notebook.** O AGV foi orçado e construído originalmente para uma Raspberry Pi 5, que queimou durante o desenvolvimento. Ela foi substituída por um notebook Linux embarcado, e tudo o que está neste repositório roda e foi validado no notebook, não na Raspberry Pi (ver [Problema 9](#problema-9--raspberry-pi-5-queimou)).
+>
+> A tabela só lista equipamentos que o código e o firmware usam.
 
 ---
 
@@ -240,7 +242,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 O sistema tem três partes:
 
 1. **Operador:** abre o painel no navegador. Recebe vídeo por MJPEG e telemetria por JSON, e envia comandos por `POST`.
-2. **PC embarcado (Linux):** `launch_production.py` sobe o servidor Flask (`pc_agv/iniciar_sistema.py`) no mesmo processo. O servidor roda cinco *threads* independentes, que compartilham estado protegido por *locks*.
+2. **Notebook embarcado (Linux):** `launch_production.py` sobe o servidor Flask (`pc_agv/iniciar_sistema.py`) no mesmo processo. O servidor roda cinco *threads* independentes, que compartilham estado protegido por *locks*.
 3. **Hardware:** Kinect v1 (USB/libfreenect), câmera ZED (USB/V4L2) e Arduino Uno (USB serial), que aciona os controladores BLDC.
 
 ### Fluxo resumido
@@ -363,7 +365,7 @@ AGV/
 ├── launch_production.spec         # receita do PyInstaller (executável único)
 ├── requirements.txt               # dependências Python
 ├── Dockerfile                     # imagem python:3.11-slim-bookworm + libfreenect
-├── docker-compose.yml             # execução no PC do AGV (Linux, com hardware)
+├── docker-compose.yml             # execução no notebook do AGV (Linux, com hardware)
 ├── docker-compose.windows.yml     # só o painel, sem hardware (Docker Desktop)
 ├── CHANGELOG.md
 ├── LICENSE
@@ -372,7 +374,7 @@ AGV/
 
 | Pasta / arquivo | Finalidade |
 |---|---|
-| `pc_agv/` | Todo o software que roda no PC do AGV: servidor, API, captura, controle e a página do painel |
+| `pc_agv/` | Todo o software que roda no notebook do AGV: servidor, API, captura, controle e a página do painel |
 | `arduino/` | Firmware que recebe os comandos pela serial e aciona os controladores BLDC |
 | `tests/` | Testes automatizados (`unittest`) que rodam sem o hardware conectado |
 | `docs/diagrams/` | Diagramas técnicos do projeto atual |
@@ -470,7 +472,7 @@ ffmpeg                                             # opcional, captura alternati
 
 Escolha o cenário. **A** é o caminho recomendado no AGV, **B** é sem Docker e **C** é só para ver o painel em outro computador.
 
-### A) PC do AGV (Linux) com Docker — recomendado
+### A) Notebook do AGV (Linux) com Docker — recomendado
 
 1. Instale o Git e o Docker Engine com o plugin Compose:
 
@@ -494,7 +496,7 @@ Escolha o cenário. **A** é o caminho recomendado no AGV, **B** é sem Docker e
 4. Conecte o Kinect (com a fonte própria ligada) e o Arduino por USB.
 5. Confira a porta do Arduino com `ls /dev/ttyACM*`. Se não for `/dev/ttyACM0`, edite `devices` em `docker-compose.yml`.
 
-### B) PC do AGV (Linux) sem Docker
+### B) Notebook do AGV (Linux) sem Docker
 
 ```bash
 sudo apt update
@@ -774,7 +776,7 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 | Dispositivo | Sistema | Versão | Resultado |
 |---|---|---|---|
 | Notebook de desenvolvimento (navegador Microsoft Edge 155) | Windows 10 Pro | 22H2 (build 19045) | Painel e HUD funcionam sem hardware; launcher não roda (usa `fcntl`, exclusivo de Linux) |
-| PC embarcado do AGV | ⚠️ PREENCHER | ⚠️ PREENCHER | ⚠️ PREENCHER |
+| Notebook embarcado do AGV | ⚠️ PREENCHER | ⚠️ PREENCHER | ⚠️ PREENCHER |
 | Celular do operador | ⚠️ PREENCHER | ⚠️ PREENCHER | ⚠️ PREENCHER |
 
 > Só entram aqui dispositivos realmente testados.
@@ -828,6 +830,7 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 |---|---|---|---|
 | Upload inicial do projeto e servidor web | abr/2026 | Kauan | ✅ |
 | Integração Kinect, ZED, Arduino e reconhecimento facial (v1.0.2–v1.0.3) | abr–mai/2026 | Kauan · ⚠️ PREENCHER | ✅ |
+| Migração da Raspberry Pi 5 (queimada) para notebook Linux embarcado | 2026 | ⚠️ PREENCHER | ✅ |
 | Firmware do Arduino reorganizado (v1.0.4) | jul/2026 | ⚠️ PREENCHER | ✅ |
 | Docker, organização do repositório e HUD em tela cheia | ago/2026 | Kauan | ✅ |
 | Fundamentação teórica e artigo (introdução e trabalhos relacionados) | 2026.2 | Equipe · ⚠️ PREENCHER | ✅ |
@@ -905,6 +908,12 @@ docs: reformula README no padrao universal
 **Causa:** `network_mode: host` e os caminhos `/dev/...` não existem no Docker Desktop.
 **Solução:** arquivo `docker-compose.windows.yml` com mapeamento de portas e serial desligada.
 
+### Problema 9 — Raspberry Pi 5 queimou
+
+**Problema:** o computador embarcado original do AGV, uma Raspberry Pi 5, queimou durante o desenvolvimento.
+**Causa:** falha de hardware da placa.
+**Solução:** substituição por um notebook Linux (x86_64) embarcado no AGV, ligado ao Kinect, à ZED e ao Arduino por USB. Todo o software atual foi desenvolvido, testado e validado no notebook; por isso o executável do PyInstaller usa as bibliotecas `x86_64-linux-gnu`.
+
 ---
 
 ## 30. Melhorias Futuras
@@ -926,7 +935,7 @@ docs: reformula README no padrao universal
 | Python, Flask, OpenCV, NumPy, face_recognition, libfreenect | Software | Gratuito, código aberto |
 | Docker Engine | Software | Gratuito no Linux |
 | Arduino IDE | Software | Gratuito |
-| Kinect v1, câmera ZED, Arduino Uno, controladores e motores BLDC, PC embarcado | Hardware | ⚠️ PREENCHER: equipamento da equipe ou da instituição |
+| Kinect v1, câmera ZED, Arduino Uno, controladores e motores BLDC, notebook embarcado | Hardware | ⚠️ PREENCHER: equipamento da equipe ou da instituição |
 | Navegador do operador | Software | Gratuito; dispensa óculos de RA |
 
 ---
@@ -941,7 +950,7 @@ Projeto acadêmico desenvolvido na disciplina UPX — Realidade Aumentada do Cen
 
 - **Jorge Henrique Gobbo Berenschot** (RA 235317): Scrum Master
 - **Kauan Victor Marques** (RA 235003): servidor, painel web/HUD e integração do hardware · [GitHub](https://github.com/Kauan-V-Marques)
-- **Pedro Henrique Santana de Oliveira** (RA 23705 ⚠️ CONFERIR): ⚠️ PREENCHER
+- **Pedro Henrique Santana de Oliveira** (RA 23705): ⚠️ PREENCHER
 - **Gabriel Pelincel Ramalho** (RA 222434): ⚠️ PREENCHER
 - **Felipe Matias de Jesus** (RA 226705): ⚠️ PREENCHER
 
