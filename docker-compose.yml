@@ -25,7 +25,6 @@ services:
       # Descomente para ajustar os loops de controle:
       # - AGV_CONTROL_LOOP_SECONDS=0.12
       # - AGV_AUTO_LOOP_SECONDS=0.18
-      # - AGV_CAPTURE_LOOP_SECONDS=0.06
 
     # ── Logs ──────────────────────────────────
     volumes:

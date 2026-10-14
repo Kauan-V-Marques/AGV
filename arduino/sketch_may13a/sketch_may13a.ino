@@ -2,7 +2,7 @@
   AGV Motor Controller - Arduino Uno (PRODUCTION-GRADE VERSION)
   
   HARDWARE CONECTADO:
-  - Raspberry Pi 5 → Serial USB (pinos RX/TX padrão)
+  - Notebook Linux embarcado → Serial USB (substituiu a Raspberry Pi 5)
   - 2x Controlador BLDC YWMJZEU
   - 2x Motores BLDC
   

@@ -57,7 +57,6 @@ DEFAULT_HOST = os.environ.get("AGV_HOST", "0.0.0.0").strip() or "0.0.0.0"
 DEFAULT_PORT = int(os.environ.get("AGV_PORT", "5000"))
 CONTROL_LOOP_SECONDS = float(os.environ.get("AGV_CONTROL_LOOP_SECONDS", "0.12"))
 AUTO_LOOP_SECONDS = float(os.environ.get("AGV_AUTO_LOOP_SECONDS", "0.18"))
-CAPTURE_LOOP_SECONDS = float(os.environ.get("AGV_CAPTURE_LOOP_SECONDS", "0.06"))
 # Watchdog: para o agv se nenhum comando manual chegar neste intervalo (0 = desativado)
 WATCHDOG_TIMEOUT_S = float(os.environ.get("AGV_WATCHDOG_TIMEOUT_S", "2.0"))
 # FPS dos streams MJPEG — reduzido para funcionar bem com sinal fraco.
@@ -105,8 +104,7 @@ _threads = []
 _state_lock = threading.Lock()
 _state = {
     "rgb": None,
-  "rgb_raw": None,
-        "zed": None,
+    "zed": None,
     "zed_device": ZED_DEVICE,
     "depth": None,
     "depth_mm": False,
@@ -114,9 +112,9 @@ _state = {
     "left_clearance_m": None,
     "center_clearance_m": None,
     "right_clearance_m": None,
-  "tilt_deg": None,
-  "tilt_target_deg": 0.0,
-  "accel": [0.0, 0.0, 0.0],
+    "tilt_deg": None,
+    "tilt_target_deg": 0.0,
+    "accel": [0.0, 0.0, 0.0],
     "fps_rgb": 0.0,
     "fps_depth": 0.0,
     "fps_zed": 0.0,
@@ -190,18 +188,15 @@ _settings = {
 }
 
 _face_lock = threading.Lock()
-_face_cascade = cv2.CascadeClassifier(
-  os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
-)
 _face_runtime = {
-  "known": False,
-  "label": "",
-  "distance": None,
-  "last_seen_at": 0.0,
-  "last_announce_at": 0.0,
-  "bbox": None,
-  "next_scan_at": 0.0,
-  "template_loaded": False,
+    "known": False,
+    "label": "",
+    "distance": None,
+    "last_seen_at": 0.0,
+    "last_announce_at": 0.0,
+    "bbox": None,
+    "next_scan_at": 0.0,
+    "template_loaded": False,
     "selected_name": "",
 }
 
@@ -291,37 +286,6 @@ def _release_kinect_usb_claims() -> None:
             continue
 
 
-def _face_preprocess(gray_face: np.ndarray) -> np.ndarray:
-    normalized = cv2.equalizeHist(gray_face)
-    resized = cv2.resize(normalized, (64, 64), interpolation=cv2.INTER_AREA)
-    descriptor = resized.astype(np.float32) / 255.0
-    descriptor = descriptor.flatten()
-    norm = np.linalg.norm(descriptor)
-    if norm > 0:
-        descriptor = descriptor / norm
-    return descriptor
-
-
-def _face_extract_primary(gray_frame: np.ndarray):
-    if _face_cascade.empty():
-        return None, None
-    faces = _face_cascade.detectMultiScale(
-        gray_frame,
-        scaleFactor=1.2,
-        minNeighbors=5,
-        minSize=(60, 60),
-    )
-    if len(faces) == 0:
-        return None, None
-    x, y, w, h = max(faces, key=lambda f: int(f[2]) * int(f[3]))
-    crop = gray_frame[y : y + h, x : x + w]
-    if crop.size == 0:
-        return None, None
-    return (int(x), int(y), int(w), int(h)), _face_preprocess(crop)
-
-
-def _load_kauan_face_descriptor() -> None:
-    global _face_known_encodings, _face_known_names
 def _normalize_face_name(name: str) -> str:
     normalized = " ".join(str(name or "").strip().split())
     return normalized[:60]
@@ -458,121 +422,6 @@ def _face_status_snapshot() -> dict:
             "selected_name": str(_face_runtime["selected_name"]),
             "names": list(_face_known_names),
         }
-
-
-def _update_face_runtime(frame_bgr: np.ndarray) -> np.ndarray:
-    now = _now()
-    selected_name, selected_encoding = _selected_face_encoding()
-
-    with _face_lock:
-        cached_bbox = None
-        known = False
-        label = ""
-        if (
-            selected_name
-            and selected_encoding is not None
-            and now < float(_face_runtime["next_scan_at"])
-            and str(_face_runtime["selected_name"]) == selected_name
-        ):
-            cached_bbox = _face_runtime["bbox"]
-            known = bool(_face_runtime["known"])
-            label = str(_face_runtime["label"])
-
-    if not selected_name or selected_encoding is None:
-        with _face_lock:
-            _face_runtime["known"] = False
-            _face_runtime["label"] = ""
-            _face_runtime["distance"] = None
-            _face_runtime["bbox"] = None
-            _face_runtime["selected_name"] = selected_name
-            _face_runtime["template_loaded"] = bool(_face_known_names)
-        return frame_bgr
-
-    if cached_bbox is None:
-        known = False
-        label = ""
-        distance = None
-        bbox = None
-
-        try:
-            # ZED e camera estereo: usa metade esquerda (672x376) em vez de
-            # reduzir 0.5x o frame completo (resultaria em 672x188, muito achatado).
-            h, w = frame_bgr.shape[:2]
-            scan_frame = frame_bgr[:, : w // 2] if w > 700 else frame_bgr
-
-            scan_h, scan_w = scan_frame.shape[:2]
-            if scan_w > max(64, FACE_SCAN_MAX_WIDTH):
-                scale = float(FACE_SCAN_MAX_WIDTH) / float(scan_w)
-                resized_w = int(scan_w * scale)
-                resized_h = int(scan_h * scale)
-                frame_for_face = cv2.resize(scan_frame, (resized_w, resized_h), interpolation=cv2.INTER_AREA)
-                scale_x = float(scan_w) / float(resized_w)
-                scale_y = float(scan_h) / float(resized_h)
-            else:
-                frame_for_face = scan_frame
-                scale_x = 1.0
-                scale_y = 1.0
-
-            rgb_small = cv2.cvtColor(frame_for_face, cv2.COLOR_BGR2RGB)
-            model = "cnn" if FACE_DETECT_MODEL == "cnn" else "hog"
-            face_locations = face_recognition.face_locations(rgb_small, model=model)
-            face_encodings = face_recognition.face_encodings(rgb_small, face_locations)
-
-            best_distance = None
-            best_bbox = None
-            for (top, right, bottom, left), encoding in zip(face_locations, face_encodings):
-                current_distance = float(np.linalg.norm(np.array(encoding, dtype=np.float32) - selected_encoding))
-                if best_distance is None or current_distance < best_distance:
-                    best_distance = current_distance
-                    left_px = int(left * scale_x)
-                    top_px = int(top * scale_y)
-                    right_px = int(right * scale_x)
-                    bottom_px = int(bottom * scale_y)
-                    best_bbox = (
-                        left_px,
-                        top_px,
-                        max(1, right_px - left_px),
-                        max(1, bottom_px - top_px),
-                    )
-
-            if best_distance is not None:
-                distance = best_distance
-                if best_distance <= FACE_MATCH_THRESHOLD:
-                    known = True
-                    label = selected_name
-                    bbox = best_bbox
-        except Exception as exc:
-            log.warning("Falha na deteccao facial da ZED: %s", exc)
-
-        with _face_lock:
-            _face_runtime["known"] = known
-            _face_runtime["label"] = label
-            _face_runtime["distance"] = distance
-            _face_runtime["last_seen_at"] = now if bbox is not None else _face_runtime["last_seen_at"]
-            _face_runtime["bbox"] = bbox if known else None
-            _face_runtime["next_scan_at"] = now + FACE_SCAN_INTERVAL
-            _face_runtime["template_loaded"] = bool(_face_known_names)
-            _face_runtime["selected_name"] = selected_name
-            if known and now - float(_face_runtime["last_announce_at"]) >= 4.0:
-                log.info("Face reconhecida na ZED: %s", selected_name)
-                _face_runtime["last_announce_at"] = now
-            cached_bbox = _face_runtime["bbox"]
-            known = bool(_face_runtime["known"])
-            label = str(_face_runtime["label"])
-
-    if known and cached_bbox is not None:
-        x, y, w, h = cached_bbox
-        cv2.rectangle(frame_bgr, (x, y), (x + w, y + h), (80, 230, 120), 2)
-        cv2.putText(
-            frame_bgr,
-            label,
-            (x, max(18, y - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            (80, 230, 120),
-            2,
-        )
-    return frame_bgr
 
 
 def _detect_selected_face_on_frame(
@@ -1665,7 +1514,6 @@ def _capture_loop() -> None:
 
             if rgb is not None:
                 with _state_lock:
-                    _state["rgb_raw"] = rgb
                     _state["rgb"] = rgb
                     _state["kinect_ok"] = True
                     _state["kinect_error"] = None
@@ -2111,29 +1959,6 @@ def route_face_select():
     ok, message = _set_selected_face(str(payload.get("name", "")))
     status_code = 200 if ok else 404
     return jsonify({"ok": ok, "message": message, "face": _face_status_snapshot()}), status_code
-
-#def route_face_register_face():
-#    with _state_lock:
-#        frame = None if _state["rgb_raw"] is None else _state["rgb_raw"].copy()
-#
-#    if frame is None:
-#        return jsonify({"ok": False, "error": "no_frame"}), 400
-#
-#    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-#    bbox, descriptor = _face_extract_primary(gray)
-#    if bbox is None or descriptor is None:
-#        return jsonify({"ok": False, "error": "no_face_detected"}), 400
-#
-#    _save_kauan_face_descriptor(descriptor)
-#    with _face_lock:
-#        _face_runtime["known"] = True
-#        _face_runtime["label"] = "e o Kauan"
-#        _face_runtime["distance"] = 0.0
-#        _face_runtime["last_seen_at"] = _now()
-#        _face_runtime["bbox"] = bbox
-#        _face_runtime["next_scan_at"] = 0.0
-#
-#    return jsonify({"ok": True, "face": _face_status_snapshot()})
 
 
 @app.route("/api/control", methods=["POST"])
