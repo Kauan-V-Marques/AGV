@@ -67,11 +67,11 @@
 
 | Nome | RA | Responsabilidade |
 |---|---|---|
-| Jorge Henrique Gobbo Berenschot | 235317 | Scrum Master: organização das sprints e acompanhamento das entregas. ⚠️ PREENCHER: responsabilidades técnicas |
-| Kauan Victor Marques | 235003 | Servidor Python/Flask, painel web e HUD de telemetria, integração com Kinect/ZED/Arduino, Docker e organização do repositório |
-| Pedro Henrique Santana de Oliveira | 23705 | ⚠️ PREENCHER |
-| Gabriel Pelincel Ramalho | 222434 | ⚠️ PREENCHER |
-| Felipe Matias de Jesus | 226705 | ⚠️ PREENCHER |
+| Jorge Henrique Gobbo Berenschot | 235317 | Scrum Master: organização das sprints e acompanhamento das entregas |
+| Kauan Victor Marques | 235003 | Interface (painel web e HUD de telemetria), servidor e integração com o hardware, testes, documentação e coordenação |
+| Pedro Henrique Santana de Oliveira | 23705 | Documentação |
+| Gabriel Pelincel Ramalho | 222434 | Codificação e organização do projeto |
+| Felipe Matias de Jesus | 226705 | Documentação |
 
 ---
 
@@ -138,6 +138,7 @@ Hipóteses, variáveis, ODS e trabalhos relacionados: [docs/documents/pesquisa-a
 | **Perfil** | Operadores de intralogística e técnicos que precisam intervir remotamente em um AGV; nos experimentos da pesquisa, **operadores não especialistas** |
 | **Contexto de uso** | Corredores de armazém ou laboratório, com o AGV em situação de exceção (obstáculo, área não mapeada, parada de segurança) |
 | **Necessidades** | Estimar distâncias, perceber obstáculos e antecipar colisões olhando apenas para a tela |
+| **Outros interessados** | Pesquisadores e projetistas de sistemas de interação humano-robô; pequenas e médias empresas que buscam automação industrial acessível |
 | **Limitações** | Sem acesso visual direto ao AGV; dependem da qualidade do vídeo e da rede Wi-Fi |
 | **Familiaridade tecnológica** | Básica: a interface usa navegador comum, teclado (WASD/setas) ou toque, sem instalar nada |
 
@@ -838,15 +839,15 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 | Atividade | Período | Responsável | Status |
 |---|---|---|---|
 | Upload inicial do projeto e servidor web | abr/2026 | Kauan | ✅ |
-| Integração Kinect, ZED, Arduino e reconhecimento facial (v1.0.2–v1.0.3) | abr–mai/2026 | Kauan · ⚠️ PREENCHER | ✅ |
-| Migração da Raspberry Pi 5 (queimada) para notebook Linux embarcado | 2026 | ⚠️ PREENCHER | ✅ |
-| Firmware do Arduino reorganizado (v1.0.4) | jul/2026 | ⚠️ PREENCHER | ✅ |
+| Integração Kinect, ZED, Arduino e reconhecimento facial (v1.0.2–v1.0.3) | abr–mai/2026 | Kauan, Gabriel | ✅ |
+| Migração da Raspberry Pi 5 (queimada) para notebook Linux embarcado | 2026 | Equipe | ✅ |
+| Firmware do Arduino reorganizado (v1.0.4) | jul/2026 | Kauan, Gabriel | ✅ |
 | Docker, organização do repositório e HUD em tela cheia | ago/2026 | Kauan | ✅ |
-| Fundamentação teórica e artigo (introdução e trabalhos relacionados) | 2026.2 | Equipe · ⚠️ PREENCHER | ✅ |
+| Fundamentação teórica e artigo (introdução e trabalhos relacionados) | 2026.2 | Equipe (documentação: Pedro e Felipe) | ✅ |
 | Documentação técnica no padrão da disciplina | out/2026 | Equipe | ✅ |
-| Requisitos das sobreposições de RA | 2026.2 | ⚠️ PREENCHER | 🚧 |
-| Alinhamento RGB × profundidade e prova de conceito das sobreposições | — | ⚠️ PREENCHER | ⬜ |
-| Protótipo experimental estável + registro de métricas | — | ⚠️ PREENCHER | ⬜ |
+| Requisitos das sobreposições de RA | 2026.2 | Equipe | 🚧 |
+| Alinhamento RGB × profundidade e prova de conceito das sobreposições | — | Kauan, Gabriel | ⬜ |
+| Protótipo experimental estável + registro de métricas | — | Kauan, Gabriel | ⬜ |
 | Experimento com operadores (SUS e NASA-TLX) | — | Equipe | ⬜ |
 | Análise dos resultados e versão final do artigo | — | Equipe | ⬜ |
 
@@ -970,10 +971,10 @@ Projeto acadêmico desenvolvido na disciplina UPX — Realidade Aumentada do Cen
 ## 33. Autores
 
 - **Jorge Henrique Gobbo Berenschot** (RA 235317): Scrum Master
-- **Kauan Victor Marques** (RA 235003): servidor, painel web/HUD e integração do hardware · [GitHub](https://github.com/Kauan-V-Marques)
-- **Pedro Henrique Santana de Oliveira** (RA 23705): ⚠️ PREENCHER
-- **Gabriel Pelincel Ramalho** (RA 222434): ⚠️ PREENCHER
-- **Felipe Matias de Jesus** (RA 226705): ⚠️ PREENCHER
+- **Kauan Victor Marques** (RA 235003): interface (painel web/HUD), servidor e integração do hardware, testes, documentação e coordenação · [GitHub](https://github.com/Kauan-V-Marques)
+- **Pedro Henrique Santana de Oliveira** (RA 23705): documentação
+- **Gabriel Pelincel Ramalho** (RA 222434): codificação e organização do projeto · [GitHub](https://github.com/gpelincel)
+- **Felipe Matias de Jesus** (RA 226705): documentação
 
 **Orientação:** Prof. Daniel Ohata
 **Instituição:** Centro Universitário Facens
