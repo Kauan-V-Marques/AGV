@@ -32,6 +32,9 @@ try:
 except Exception:
     freenect = None
 
+# Mensagem curta: o quadro de espera do video mostra so 44 caracteres.
+SEM_DRIVER = "driver freenect nao instalado"
+
 # KINECT_STABILIZATION_ENABLED vem do config e pode ser alterado em tempo de
 # execucao por set_kinect_stabilization (rebind local deste modulo).
 
@@ -188,7 +191,7 @@ def _do_tilt_body(dev) -> None:
 
 def _kinect_device_available() -> tuple[bool, Optional[str]]:
     if freenect is None:
-        return False, "python3-freenect nao disponivel no sistema"
+        return False, SEM_DRIVER
 
     ctx = None
     try:
@@ -226,7 +229,7 @@ def capture_loop() -> None:
         while not estado.stop_event.is_set():
             with estado.state_lock:
                 estado.state["kinect_ok"] = False
-                estado.state["kinect_error"] = "python3-freenect nao disponivel no sistema"
+                estado.state["kinect_error"] = SEM_DRIVER
             estado.stop_event.wait(1.0)
         return
 

@@ -27,7 +27,7 @@ class TestKinectDisponibilidade(unittest.TestCase):
             return kinect._kinect_device_available()
 
     def test_sem_biblioteca(self):
-        self.assertEqual(self._verificar(None), (False, "python3-freenect nao disponivel no sistema"))
+        self.assertEqual(self._verificar(None), (False, kinect.SEM_DRIVER))
 
     def test_falha_ao_iniciar(self):
         fake = MagicMock()
@@ -96,7 +96,7 @@ class TestKinectCaptura(unittest.TestCase):
                 patch.object(estado, "stop_event", EventoDeParada(1)):
             kinect.capture_loop()
             self.assertFalse(estado.state["kinect_ok"])
-            self.assertEqual(estado.state["kinect_error"], "python3-freenect nao disponivel no sistema")
+            self.assertEqual(estado.state["kinect_error"], kinect.SEM_DRIVER)
 
     def test_callbacks_viram_video_e_distancias_no_estado(self):
         parar = threading.Event()
