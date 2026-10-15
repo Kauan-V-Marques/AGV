@@ -8,11 +8,19 @@ Gera um unico binario console: dist/launch_production
 import glob
 import os
 
-_freenect_so = glob.glob(os.path.expanduser("~/.local/lib/python*/site-packages/freenect*.so"))
+try:
+    # Onde quer que o driver tenha sido instalado (pip --user, sistema, venv)
+    import freenect as _freenect_mod
+
+    _freenect_so = [_freenect_mod.__file__]
+except ImportError:
+    _freenect_so = glob.glob(os.path.expanduser("~/.local/lib/python*/site-packages/freenect*.so"))
+    if not _freenect_so:
+        _freenect_so = glob.glob("/usr/lib/python*/dist-packages/freenect*.so")
 if not _freenect_so:
-    _freenect_so = glob.glob("/usr/lib/python*/dist-packages/freenect*.so")
-if not _freenect_so:
-    raise FileNotFoundError("freenect .so nao encontrado. Instale python3-freenect antes do build.")
+    raise FileNotFoundError(
+        "driver freenect nao encontrado. Rode scripts/instalar_freenect_python.sh antes do build."
+    )
 
 _binaries = [(_freenect_so[0], ".")]
 for lib_path in [

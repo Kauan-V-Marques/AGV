@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v5
         with:
@@ -42,10 +42,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build da imagem
-        run: docker build -t agv-servidor .
+        run: |
+          set -o pipefail
+          docker build --progress=plain -t agv-servidor . 2>&1 | tee build.log \
+            || { python3 .github/scripts/anotar_erro.py build.log "docker build"; exit 1; }
 
       - name: Driver do Kinect importa dentro da imagem
         run: docker run --rm agv-servidor python -c "import freenect; print('freenect ok')"
@@ -57,7 +60,8 @@ jobs:
             if curl -fsS http://127.0.0.1:5000/api/status > /dev/null; then echo "servidor ok"; exit 0; fi
             sleep 2
           done
-          docker logs agv
+          docker logs agv > agv.log 2>&1
+          python3 .github/scripts/anotar_erro.py agv.log "container nao respondeu"
           exit 1
 
   executavel:
@@ -65,21 +69,28 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Passo B do README (sem Docker)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3 python3-pip python3-dev python3-freenect libfreenect-dev libfreenect-bin build-essential cmake
-          pip3 install -r requirements.txt --break-system-packages
+          set -o pipefail
+          {
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip python3-dev libfreenect-dev libfreenect-bin libusb-1.0-0-dev build-essential cmake curl
+            pip3 install -r requirements.txt --break-system-packages
+            PIP_ARGS=--break-system-packages bash scripts/instalar_freenect_python.sh
+          } 2>&1 | tee passo_b.log || { python3 .github/scripts/anotar_erro.py passo_b.log "passo B do README"; exit 1; }
 
       - name: Driver do Kinect e numpy juntos
         run: python3 -c "import freenect, numpy; print('freenect ok; numpy', numpy.__version__)"
 
       - name: Gerar o executavel (PyInstaller)
         run: |
-          pip3 install pyinstaller --break-system-packages
-          python3 -m PyInstaller launch_production.spec
+          set -o pipefail
+          {
+            pip3 install pyinstaller --break-system-packages
+            python3 -m PyInstaller launch_production.spec
+          } 2>&1 | tee pyinstaller.log || { python3 .github/scripts/anotar_erro.py pyinstaller.log "PyInstaller"; exit 1; }
 
       - name: Executavel responde sem hardware
         run: |
@@ -88,5 +99,5 @@ jobs:
             if curl -fsS http://127.0.0.1:5000/api/status > /dev/null; then echo "executavel ok"; exit 0; fi
             sleep 2
           done
-          cat agv.log
+          python3 .github/scripts/anotar_erro.py agv.log "executavel nao respondeu"
           exit 1

@@ -17,27 +17,32 @@ WORKDIR /app
 
 # ─────────────────────────────────────────────
 # Dependências do sistema
-#   freenect         – driver do Kinect v1
+#   libfreenect-dev  – biblioteca C do Kinect v1 (o python3-freenect nao existe no Debian)
 #   libusb           – acesso USB (Kinect + Arduino)
-#   cmake/g++/etc.    – necessarios para compilar dlib (face-recognition)
+#   build-essential/cmake – compilar o dlib (face-recognition) e o driver Python do Kinect
+#   curl/ca-certificates  – baixar o codigo-fonte do driver
 # ─────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3-freenect \
         libfreenect-dev \
         libfreenect-bin \
-        libusb-1.0-0 \
+        libusb-1.0-0-dev \
         udev \
         build-essential \
         cmake \
-        # necessário para pyserial encontrar portas seriais
+        curl \
+        ca-certificates \
         && rm -rf /var/lib/apt/lists/*
 
 # ─────────────────────────────────────────────
-# Dependências Python (sem freenect — já é de sistema)
+# Dependências Python
 # face-recognition puxa o dlib, que compila do fonte (demora na 1a build).
 # ─────────────────────────────────────────────
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Driver Python do Kinect, compilado contra a libfreenect do sistema
+COPY scripts/instalar_freenect_python.sh ./scripts/
+RUN PYTHON=python PIP_ARGS=--no-cache-dir bash scripts/instalar_freenect_python.sh
 
 # ─────────────────────────────────────────────
 # Código do projeto
