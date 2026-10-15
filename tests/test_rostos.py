@@ -36,7 +36,6 @@ class _BancoTemporario:
         raiz = self._pasta.name
         logs = os.path.join(raiz, "logs")
         self._patches = [
-            patch.object(rostos, "PROJECT_ROOT", raiz),
             patch.object(rostos, "FACE_DB_DIR", logs),
             patch.object(rostos, "FACE_UPLOADS_DIR", os.path.join(logs, "faces")),
             patch.object(rostos, "ENCODINGS_FILE", os.path.join(logs, "encodings.pkl")),

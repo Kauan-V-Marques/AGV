@@ -20,7 +20,6 @@ from pc_agv.config import (
     FACE_SCAN_MAX_WIDTH,
     FACE_SELECTED_MAX_DISTANCE,
     FACE_UPLOADS_DIR,
-    PROJECT_ROOT,
     log,
 )
 from pc_agv import estado
@@ -414,7 +413,8 @@ def register_face(raw_name: str, image_file) -> tuple[dict, int]:
             target_index = index
             break
 
-    project_image_path = os.path.relpath(stored_path, PROJECT_ROOT)
+    # Caminho relativo a pasta que contem logs/ (no executavel ela fica fora do projeto).
+    project_image_path = os.path.relpath(stored_path, os.path.dirname(FACE_DB_DIR))
     if target_index is None:
         known_encodings.append(descriptor)
         known_names.append(face_name)

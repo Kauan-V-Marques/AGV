@@ -52,7 +52,22 @@ FACE_IMPOSTOR_MARGIN = float(os.environ.get("AGV_FACE_IMPOSTOR_MARGIN", "0.05"))
 FACE_SELECTED_MAX_DISTANCE = float(os.environ.get("AGV_FACE_SELECTED_MAX_DISTANCE", "0.52"))
 FACE_DETECT_MODEL = os.environ.get("AGV_FACE_DETECT_MODEL", "hog").strip().lower() or "hog"
 FACE_SCAN_MAX_WIDTH = int(os.environ.get("AGV_FACE_SCAN_MAX_WIDTH", "640"))
-FACE_DB_DIR = os.path.join(PROJECT_ROOT, "logs")
+
+
+def _pasta_de_dados() -> str:
+    # O executavel do PyInstaller (onefile) roda numa pasta temporaria que e apagada ao
+    # fechar: nele os dados ficam em logs/ ao lado do executavel.
+    definida = os.environ.get("AGV_DADOS_DIR", "").strip()
+    if definida:
+        return os.path.abspath(definida)
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "logs")
+    return os.path.join(PROJECT_ROOT, "logs")
+
+
+# Dados gerados em execucao (rostos e aprendizado). Fora do Git.
+DADOS_DIR = _pasta_de_dados()
+FACE_DB_DIR = DADOS_DIR
 FACE_UPLOADS_DIR = os.path.join(FACE_DB_DIR, "faces")
 ENCODINGS_FILE = os.path.join(FACE_DB_DIR, "encodings.pkl")
 # Tamanho maximo de upload (foto de rosto); acima disso a API responde 413.
