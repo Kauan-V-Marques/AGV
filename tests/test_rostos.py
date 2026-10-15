@@ -208,6 +208,18 @@ class TestCadastro(unittest.TestCase):
             payload, _ = rostos.register_face("Bia", self._foto("foto.gif"))
         self.assertTrue(payload["image_path"].endswith("bia.jpg"))
 
+    def test_banco_corrompido_nao_e_apagado(self):
+        with _BancoTemporario(), rostos_isolado(), \
+                patch.object(rostos.face_recognition, "face_encodings", return_value=[_vetor()]):
+            os.makedirs(rostos.FACE_DB_DIR, exist_ok=True)
+            with open(rostos.ENCODINGS_FILE, "wb") as f:
+                f.write(b"arquivo corrompido")
+            payload, status = rostos.register_face("Bia", self._foto())
+            with open(rostos.ENCODINGS_FILE, "rb") as f:
+                conteudo = f.read()
+        self.assertEqual((status, payload["error"]), (500, "face_database_unreadable"))
+        self.assertEqual(conteudo, b"arquivo corrompido")
+
     def test_falha_ao_gravar_a_foto(self):
         with _BancoTemporario(), rostos_isolado(), \
                 patch.object(rostos.face_recognition, "face_encodings", return_value=[_vetor()]), \

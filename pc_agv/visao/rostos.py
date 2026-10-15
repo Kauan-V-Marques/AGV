@@ -400,8 +400,12 @@ def register_face(raw_name: str, image_file) -> tuple[dict, int]:
 
     try:
         known_encodings, known_names, known_image_paths = _load_face_database()
-    except Exception:
+    except FileNotFoundError:
         known_encodings, known_names, known_image_paths = [], [], []
+    except Exception as exc:
+        # Nao sobrescreve um banco que existe mas nao pode ser lido: perderia todos os rostos.
+        log.error("Banco de rostos ilegivel (%s): cadastro recusado para nao apagar %s", exc, ENCODINGS_FILE)
+        return {"ok": False, "error": "face_database_unreadable"}, 500
 
     target_index = None
     face_name_lower = face_name.lower()
