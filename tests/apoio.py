@@ -1,0 +1,93 @@
+"""Apoio aos testes: parada controlada dos loops, serial falsa e isolamento do estado global."""
+
+import contextlib
+from unittest.mock import patch
+
+from pc_agv import estado
+from pc_agv.hardware import arduino
+from pc_agv.visao import rostos
+
+
+class EventoDeParada:
+    """Substitui estado.stop_event: o loop roda `voltas` vezes e depois para.
+
+    Cada chamada a is_set() consome uma volta; wait() volta na hora, sem dormir.
+    """
+
+    def __init__(self, voltas: int = 1):
+        self._restantes = voltas
+
+    def is_set(self) -> bool:
+        if self._restantes > 0:
+            self._restantes -= 1
+            return False
+        return True
+
+    def wait(self, timeout=None) -> bool:
+        return False
+
+
+class SerialFalsa:
+    """Porta serial em memoria: registra o que foi escrito e devolve linhas programadas."""
+
+    def __init__(self, linhas=None, falhar_escrita: bool = False):
+        self.linhas = list(linhas or [])
+        self.escrito = []
+        self.falhar_escrita = falhar_escrita
+        self.fechada = False
+
+    @property
+    def in_waiting(self) -> int:
+        return sum(len(item) for item in self.linhas)
+
+    def readline(self) -> bytes:
+        return self.linhas.pop(0) if self.linhas else b""
+
+    def write(self, data: bytes) -> int:
+        if self.falhar_escrita:
+            raise OSError("cabo desconectado")
+        self.escrito.append(data)
+        return len(data)
+
+    def flush(self) -> None:
+        pass
+
+    def reset_output_buffer(self) -> None:
+        pass
+
+    def setDTR(self, value) -> None:  # noqa: N802 - mesmo nome da API do pyserial
+        pass
+
+    def setRTS(self, value) -> None:  # noqa: N802 - mesmo nome da API do pyserial
+        pass
+
+    def close(self) -> None:
+        self.fechada = True
+
+
+@contextlib.contextmanager
+def estado_isolado():
+    """Restaura os dicionarios de estado compartilhado ao sair do bloco."""
+    with contextlib.ExitStack() as pilha:
+        for dicionario in (estado.state, estado.control_state, estado.autopilot_state, estado.settings):
+            pilha.enter_context(patch.dict(dicionario))
+        yield
+
+
+@contextlib.contextmanager
+def arduino_isolado():
+    """Restaura o estado do link serial (porta aberta e dicionario de estado)."""
+    with patch.dict(arduino._arduino_state), patch.dict(arduino._arduino_rx_state), \
+            patch.dict(arduino._arduino_log_state), patch.object(arduino, "_arduino_serial", None):
+        yield
+
+
+@contextlib.contextmanager
+def rostos_isolado():
+    """Restaura o banco de rostos em memoria e o estado do reconhecimento."""
+    with patch.dict(rostos._face_runtime), patch.dict(rostos._zed_face_state), \
+            patch.object(rostos, "_face_known_encodings", []), \
+            patch.object(rostos, "_face_known_names", []), \
+            patch.object(rostos, "_face_known_image_paths", []), \
+            patch.object(rostos, "_face_selected_name", ""):
+        yield
