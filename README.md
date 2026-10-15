@@ -3,6 +3,7 @@
 > **UPX — Realidade Aumentada · Centro Universitário Facens**
 > Interface web de teleoperação de um AGV (veículo guiado automaticamente) de baixo custo, com vídeo RGB, mapa de profundidade do Kinect v1 e HUD de telemetria sobre o vídeo, base para a pesquisa *"Uso de Realidade Aumentada na teleoperação de um AGV: apoio à navegação remota em intralogística"*.
 
+![CI](https://github.com/Kauan-V-Marques/AGV/actions/workflows/ci.yml/badge.svg)
 ![Status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)
 ![Plataforma](https://img.shields.io/badge/AGV-Linux%20x86__64-green)
 ![Operador](https://img.shields.io/badge/operador-navegador%20web-blue)
@@ -220,12 +221,17 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | face_recognition | ≥ 1.3.0 (testado 1.3.0) | Detecção (HOG) e descritores faciais de 128 dimensões |
 | dlib | 20.0.1 (compilado na instalação do face_recognition) | Motor de visão do face_recognition |
 | PySerial | ≥ 3.5 (testado 3.5) | Comunicação serial com o Arduino |
-| libfreenect / `python3-freenect` | Pacote da distribuição (Debian bookworm na imagem Docker) | Driver do Kinect v1: RGB, profundidade, tilt e acelerômetro |
+| libfreenect | 0.5.3 (apt: `libfreenect-dev`) | Biblioteca C do Kinect v1 |
+| Driver Python `freenect` | compilado do OpenKinect/libfreenect **v0.7.5** com Cython ≥ 3 ([`scripts/instalar_freenect_python.sh`](scripts/instalar_freenect_python.sh)) | Acesso ao Kinect pelo Python: RGB, profundidade, tilt e acelerômetro |
 | FFmpeg | Pacote da distribuição (opcional) | Captura alternativa da ZED quando o OpenCV não abre o dispositivo |
 | HTML5, CSS e JavaScript | — (sem frameworks) | Painel web e HUD, embutidos em `HTML_PAGE` |
 | Arduino (C++) | ⚠️ PREENCHER: versão da Arduino IDE usada | Firmware de controle dos motores |
 | Docker Engine + Compose | Compose v2 (`docker compose`) | Empacotamento e execução no notebook do AGV |
 | PyInstaller | 6.x | Executável único `dist/launch_production` |
+| setuptools | < 81 | Mantém o `pkg_resources`, usado pelo `face_recognition_models` |
+| Ruff | 0.x | Lint no CI (só regras que apontam erros reais, ver `ruff.toml`) |
+| coverage.py | 7.x | Cobertura dos testes no CI (mínimo de 80%) |
+| GitHub Actions | — | CI: testes, lint, imagem Docker e executável a cada push |
 | Git / GitHub | — | Controle de versão e documentação |
 
 ---
@@ -382,10 +388,10 @@ AGV/
 │       ├── rotas.py               # aplicação Flask e API REST
 │       ├── mjpeg.py               # streams MJPEG
 │       └── static/                # painel.html, painel.css, painel.js (painel e HUD)
-├── tests/
-│   ├── test_arduino_serial.py     # testes da serial e do protocolo
-│   ├── test_depth_metrics.py      # testes das distâncias e do modo autônomo
-│   └── test_kinect_release.py     # testes de liberação USB e tilt do Kinect
+├── tests/                         # 117 testes, todos sem hardware (seção 22.1)
+│   ├── apoio.py                   # serial falsa, parada controlada dos loops, isolamento do estado
+│   └── test_*.py                  # controle, API, serial, rostos, captura, profundidade...
+├── .github/workflows/ci.yml       # CI: testes, lint, imagem Docker e executável
 ├── docs/
 │   ├── diagrams/                  # arquitetura e janelas de profundidade (SVG)
 │   ├── documents/                 # síntese do artigo científico
@@ -393,7 +399,9 @@ AGV/
 ├── logs/                          # fotos e encodings de rosto gerados em runtime (fora do Git)
 ├── launch_production.py           # ponto de entrada: sobe o servidor e abre o navegador
 ├── launch_production.spec         # receita do PyInstaller (executável único)
-├── requirements.txt               # dependências Python
+├── requirements.txt               # dependências Python (faixas testadas)
+├── ruff.toml                      # regras do lint
+├── scripts/instalar_freenect_python.sh  # compila o driver Python do Kinect
 ├── Dockerfile                     # imagem python:3.11-slim-bookworm + libfreenect
 ├── docker-compose.yml             # execução no notebook do AGV (Linux, com hardware)
 ├── docker-compose.windows.yml     # só o painel, sem hardware (Docker Desktop)
@@ -526,7 +534,7 @@ Formato `aceleração,direção\n`, com aceleração em −255..255 e direção 
 | Ação no painel | Linha enviada |
 |---|---|
 | W (frente) | `255,0` |
-| A com o AGV parado (gira à esquerda) | `140,-177` |
+| A com o AGV parado (gira à esquerda) | `140,-124` |
 | W + D (frente virando à direita) | `255,124` |
 | W com limite de velocidade em 50% | `127,0` |
 | Parado | `0,0` |
@@ -538,17 +546,18 @@ Formato `aceleração,direção\n`, com aceleração em −255..255 e direção 
 **Python** ([`requirements.txt`](requirements.txt), instaladas via PyPI):
 
 ```text
-flask>=3.0
-opencv-python-headless>=4.8
-numpy>=1.24
-pyserial>=3.5
-face-recognition>=1.3.0
+flask>=3.0,<4
+opencv-python-headless>=4.8,<5
+numpy>=1.24,<3
+pyserial>=3.5,<4
+face-recognition>=1.3.0,<2
+setuptools<81        # face_recognition_models usa pkg_resources (removido no setuptools 81)
 ```
 
 **Sistema (Linux):**
 
 ```text
-python3-freenect libfreenect-dev libfreenect-bin   # driver do Kinect v1 (OpenKinect)
+libfreenect-dev libfreenect-bin libusb-1.0-0-dev  # biblioteca C do Kinect v1 (OpenKinect)
 libusb-1.0-0 udev                                  # acesso USB
 build-essential cmake                              # compilar o dlib do face-recognition
 ffmpeg                                             # opcional, captura alternativa da ZED
@@ -556,7 +565,8 @@ ffmpeg                                             # opcional, captura alternati
 
 | Dependência essencial | Onde obter |
 |---|---|
-| libfreenect | Repositórios Debian/Ubuntu (`apt`) ou [OpenKinect/libfreenect](https://github.com/OpenKinect/libfreenect) |
+| libfreenect (C) | Repositórios Debian/Ubuntu (`apt install libfreenect-dev`) |
+| Driver Python `freenect` | **Não existe pacote `python3-freenect`** no Ubuntu/Debian: é compilado de [OpenKinect/libfreenect](https://github.com/OpenKinect/libfreenect) pelo `scripts/instalar_freenect_python.sh` |
 | face_recognition / dlib | [PyPI](https://pypi.org/project/face-recognition/) · [ageitgey/face_recognition](https://github.com/ageitgey/face_recognition) |
 | Arduino IDE | [arduino.cc/en/software](https://www.arduino.cc/en/software) |
 | Docker | [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) |
@@ -595,14 +605,15 @@ Escolha o cenário. **A** é o caminho recomendado no AGV, **B** é sem Docker e
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-pip python3-freenect libfreenect-dev libfreenect-bin build-essential cmake ffmpeg
+sudo apt install -y git python3 python3-pip python3-dev libfreenect-dev libfreenect-bin libusb-1.0-0-dev build-essential cmake curl ffmpeg
 git clone https://github.com/Kauan-V-Marques/AGV.git
 cd AGV
 pip3 install -r requirements.txt --break-system-packages   # compila o dlib: leva alguns minutos
+PIP_ARGS=--break-system-packages bash scripts/instalar_freenect_python.sh   # driver Python do Kinect
 sudo usermod -aG dialout $USER                              # acesso à serial (refaça o login)
 ```
 
-> Se preferir um ambiente virtual, crie-o em `.venv` com `python3 -m venv --system-site-packages .venv`. O `python3-freenect` vem do sistema, e o launcher usa `.venv` automaticamente se ela existir.
+> Se preferir um ambiente virtual: `python3 -m venv .venv`, `.venv/bin/pip install -r requirements.txt` e `PYTHON=.venv/bin/python bash scripts/instalar_freenect_python.sh`. O launcher usa a `.venv` automaticamente se ela existir.
 
 ### C) Windows ou Mac — só visualizar o painel (sem hardware)
 
@@ -622,6 +633,7 @@ sudo usermod -aG dialout $USER                              # acesso à serial (
 | `AGV_SPEED_LIMIT_PCT` | `100` | Limite inicial de velocidade |
 | `AGV_KINECT_STABILIZATION` | `1` | Estabilização do tilt |
 | `AGV_ZED_DEVICE` | `/dev/video0` | Dispositivo da câmera ZED |
+| `AGV_MAX_UPLOAD_MB` | `10` | Tamanho máximo da foto no cadastro de rosto (acima disso: erro 413) |
 | `AGV_FACE_DETECT_MODEL` | `hog` | `cnn` é mais preciso e muito mais lento |
 
 ---
@@ -661,8 +673,10 @@ Acesse `http://localhost:5000`. Os vídeos mostram "Aguardando Kinect/ZED" e a s
 ### D) Desenvolvimento e testes (qualquer sistema com Python 3.11)
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt ruff coverage
 python -m unittest discover -s tests -v    # testes automatizados
+ruff check .                               # lint
+coverage run --source=pc_agv -m unittest discover -s tests && coverage report   # cobertura
 python -m pc_agv.iniciar_sistema           # só o servidor, sem o launcher (que é exclusivo de Linux)
 ```
 
@@ -824,36 +838,39 @@ Painel principal (http://IP_DO_AGV:5000)
 
 ## 22. Testes Técnicos
 
-### 22.1 Testes automatizados (`python -m unittest discover -s tests -v`)
+### 22.1 Testes automatizados
 
-Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
+Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a serial, o `freenect`, a câmera ZED e o `face_recognition` são simulados. O **GitHub Actions** roda tudo a cada push ([ci.yml](.github/workflows/ci.yml)).
 
-| Teste | Procedimento | Resultado esperado | Resultado obtido | Status |
-|---|---|---|---|---|
-| Leitura do feedback do Arduino | `FakeSerial` com `ARDUINO:READY/OK/STATUS` | Linhas lidas e erro anterior limpo | Conforme esperado | ✅ |
-| Linha `STATUS` limpa erro | `FakeSerial` com `STATUS:0,0,OK,E:0` | `last_error` vira `None` | Conforme esperado | ✅ |
-| Descoberta da porta serial | `glob` vazio + `list_ports` simulado | Encontra `/dev/ttyACM0` | Conforme esperado | ✅ |
-| Ré envia valor negativo | `arduino.speed_steering_to_payload(-50, 0)` | `(-170, 0)` | Conforme esperado | ✅ |
-| Rota de reconexão do Kinect | `POST /api/kinect/reconnect` | 200 e liberação USB chamada | Conforme esperado | ✅ |
-| Rotas de tilt e estabilização | `POST /api/kinect/tilt`, `GET/POST /api/kinect/stabilization` | Ângulo e estado repassados | Conforme esperado | ✅ |
-| Tilt manual imediato | `kinect.command_kinect_tilt(12)` e `(-12)` | `sync_set_tilt_degs(12)` e `(-12)` | Conforme esperado | ✅ |
-| Ordem de liberação dos módulos | `kinect.release_kinect_usb_claims()` com `AGV_KINECT_RELEASE_UVCVIDEO` desligado e ligado | Comandos `sudo` na ordem certa; `uvcvideo` só quando ligado | Conforme esperado | ✅ |
-| Correção de tilt pelo acelerômetro / tilt manual com estabilização OFF | `kinect._do_tilt_body` com `freenect` simulado | `set_tilt_degs` chamado | Conforme esperado | ✅ |
-| Distância = ponto mais próximo | Janela com obstáculo (raw 500 ≈ 0,56 m) na frente de parede (raw 1000 ≈ 3,85 m) | 0,56 m | Conforme esperado | ✅ |
-| Fundo distante não apaga a janela | Obstáculo a 0,67 m com fundo além de 10 m | 0,67 m | Conforme esperado | ✅ |
-| Leituras inválidas | Janela só com raw 2047 | Sem distância (`None`) | Conforme esperado | ✅ |
-| Formato em milímetros | Janela com 800 mm entre 3000 mm | 0,80 m | Conforme esperado | ✅ |
-| Obstáculo só no centro | Quadro 640×480 com obstáculo na janela central | Centro 0,56 m; esquerda e direita 3,85 m | Conforme esperado | ✅ |
-| Autônomo desvia | Mesmo quadro no modo autônomo | `desvio-curto`, velocidade 18%, com giro | Conforme esperado | ✅ |
+| Arquivo | O que verifica | Testes |
+|---|---|---|
+| `test_controle.py` | Regras do modo autônomo (todas as faixas de distância), **watchdog parando o AGV** sem comando novo, watchdog desligado, modo autônomo e falha de envio ao Arduino | 16 |
+| `test_arduino_envio.py` / `test_arduino_serial.py` | Tabela do protocolo `aceleração,direção`, limite de velocidade, ré, cabo desconectado, conexão (sem pyserial, sem porta, sem permissão/`dialout`), leitura do retorno do firmware | 18 |
+| `test_rotas.py` | As 19 rotas da API: painel, streams MJPEG, status, controle, parada total, limite de velocidade, rostos, entradas inválidas (400) e upload grande demais (413) | 23 |
+| `test_rostos.py` | Banco de rostos (formato atual e antigo, arquivo corrompido não é apagado), regra de seleção com margem anti-impostor, fila de quadros e **cadastro com sucesso** | 19 |
+| `test_captura.py` | Fluxo completo do Kinect (callback → quadro BGR → distâncias no estado), disponibilidade do Kinect, tilt, ZED com rosto marcado e leitor do FFmpeg | 18 |
+| `test_depth_metrics.py` | Distância pelo ponto mais próximo, fundo distante, leituras inválidas, formato em mm e desvio no autônomo | 6 |
+| `test_kinect_release.py` | Liberação dos módulos do kernel, reconexão, tilt e estabilização | 9 |
+| `test_telemetria_mjpeg_runtime.py` / `test_servidor.py` | `/api/status`, quadros MJPEG, start/stop das cinco threads e servidor HTTP real numa porta livre | 8 |
 
-**Resumo:** 19 testes, todos aprovados. Os testes simulam a serial e o `freenect`, então rodam em qualquer sistema, sem o hardware.
+**Resumo:** 117 testes, todos aprovados (Windows 10 / Python 3.11.9 e Ubuntu 24.04 no CI). Cobertura do pacote `pc_agv`: **81%**.
+
+| Módulo | Cobertura | Módulo | Cobertura |
+|---|---|---|---|
+| `controle.py` | 99% | `visao/profundidade.py` | 85% |
+| `runtime.py`, `telemetria.py`, `estado.py`, `config.py` | 100% | `hardware/arduino.py` | 87% |
+| `web/mjpeg.py` | 96% | `hardware/kinect.py` | 77% |
+| `web/rotas.py` | 89% | `hardware/zed.py` | 55% |
+| `visao/rostos.py` | 89% | **Total** | **81%** |
+
+O CI também **monta a imagem Docker** e **gera o executável do PyInstaller** num Ubuntu 24.04 limpo, seguindo o passo B da seção 15, e confere que os dois sobem e respondem `/api/status`.
 
 ### 22.2 Testes do painel sem hardware
 
 | Teste | Procedimento | Resultado esperado | Resultado obtido | Status |
 |---|---|---|---|---|
 | Servidor sobe sem hardware | `python -m pc_agv.iniciar_sistema` com `AGV_ARDUINO_ENABLED=0` | Servidor responde | `GET /`, `/api/status`, `/api/face/status` e `/api/settings` retornaram 200 | ✅ |
-| Kinect ausente | Abrir o painel sem `python3-freenect` | Mensagem clara no vídeo e na telemetria | "Aguardando Kinect RGB — python3-freenect nao disponivel no sistema" | ✅ |
+| Kinect ausente | Abrir o painel sem o driver `freenect` | Mensagem clara no vídeo e na telemetria | "Aguardando Kinect RGB — driver freenect nao instalado" | ✅ |
 | ZED ausente | Abrir o painel sem `/dev/video*` | Mensagem no card da ZED | "Aguardando webcam ZED — nao abriu webcam ZED" | ✅ |
 | Serial desativada | `AGV_ARDUINO_ENABLED=0` | Telemetria indica serial desligada | "serial desativada por ambiente" | ✅ |
 | Tecla segurada além do watchdog | Painel real em navegador *headless*: W pressionado sem soltar, `active_speed` lido em 0,5/1,5/2,5/3,5 s | Velocidade mantida enquanto W estiver pressionado | 100, 100, 100, 100 (antes da correção: 100, 100, 0, 0) | ✅ |
@@ -902,6 +919,7 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 - **1ª build lenta:** o `face-recognition` compila o dlib do código-fonte.
 - **RTT não é registrado:** a latência só aparece como aviso na tela; a pesquisa precisa dela em log (RF24).
 - **Distância pelo pixel mais próximo:** cada janela usa o ponto mais próximo; um pixel isolado com ruído pode gerar um alerta falso. Ainda não há filtro (ex.: percentil ou mediana).
+- **O CI não tem hardware:** Kinect, ZED e Arduino são simulados; o funcionamento real só é validado no AGV (seção 22.3). A captura da ZED por FFmpeg é a parte menos coberta (`zed.py`, 55%).
 - **Os testes não cobrem o JavaScript do painel:** o comportamento do teclado e do HUD foi verificado em navegador *headless*, não por testes automatizados.
 
 ---
@@ -948,7 +966,7 @@ Executados em 14/10/2026 no Windows 10 com Python 3.11.9, sem hardware.
 
 ## 28. Controle de Versão
 
-- **Branches e Pull Requests:** as mudanças entram por branches de funcionalidade (`feature/hud-fullscreen-viewer`, `chore/organizar-repositorio`, `chore/limpeza-codigo-morto`, `fix/distancia-profundidade`, `fix/controle-manual-watchdog`, `docs/readme-modelo-upx`, `refactor/modularizar`) mescladas na `main` por PR.
+- **Branches e Pull Requests:** as mudanças entram por branches de funcionalidade (`feature/hud-fullscreen-viewer`, `chore/organizar-repositorio`, `chore/limpeza-codigo-morto`, `fix/distancia-profundidade`, `fix/controle-manual-watchdog`, `docs/readme-modelo-upx`, `refactor/modularizar`, `chore/qualidade-codigo`) mescladas na `main` por PR.
 - **Commits:** seguem o padrão *Conventional Commits*:
 
 ```text
@@ -957,6 +975,7 @@ chore: organiza repositorio e corrige build Docker
 docs: reformula README no padrao universal
 ```
 
+- **Integração contínua:** o GitHub Actions roda lint, testes (cobertura mínima de 80%), build da imagem Docker e do executável a cada push e pull request; o selo no topo do README mostra o resultado da `main`.
 - **Marcos de versão:** `v1.0.2`, `v1.0.3` e `v1.0.4` estão registrados nos commits; o histórico de cada versão está no [CHANGELOG.md](CHANGELOG.md). Veja o [histórico completo](https://github.com/Kauan-V-Marques/AGV/commits/main).
 
 ---
@@ -1035,6 +1054,30 @@ docs: reformula README no padrao universal
 **Problema:** todo o software (servidor, hardware, regras e o painel HTML/CSS/JS) estava em `pc_agv/iniciar_sistema.py`, o que dificultava entender, testar e dividir o trabalho na equipe.
 **Causa:** o projeto cresceu adicionando funções ao mesmo arquivo, com estado global compartilhado.
 **Solução:** divisão em módulos por responsabilidade (`config`, `estado`, `hardware/`, `visao/`, `controle`, `web/`) e painel em `web/static/`. A lógica foi copiada sem alteração, e a equivalência foi verificada contra a versão anterior: mesmas 19 rotas, mesmas chaves em `/api/status`, mesmo HTML/CSS/JS, mesmas respostas de erro no cadastro de rosto, capturas do painel e do HUD idênticas pixel a pixel e os 19 testes passando.
+
+### Problema 13 — Cadastro de rosto podia apagar o banco de rostos
+
+**Problema:** com o arquivo `logs/encodings.pkl` corrompido, cadastrar um novo rosto apagava todos os rostos já cadastrados, sem aviso.
+**Causa:** qualquer erro de leitura do banco era tratado como "banco vazio", e o novo cadastro era gravado por cima.
+**Solução:** só a ausência do arquivo conta como banco vazio; se ele existe e não pode ser lido, o cadastro é recusado (`face_database_unreadable`), o erro vai para o log e o arquivo fica intacto. Encontrado ao escrever os testes de `rostos.py`.
+
+### Problema 14 — Entradas inválidas derrubavam a API
+
+**Problema:** `POST /api/kinect/tilt` com ângulo inválido respondia erro 500, e `"nan"`/`"inf"` eram aceitos e enviados ao motor do Kinect; o cadastro de rosto aceitava arquivos de qualquer tamanho.
+**Causa:** falta de validação de entrada e de limite de upload.
+**Solução:** ângulo inválido responde 400 sem acionar o motor; uploads acima de `AGV_MAX_UPLOAD_MB` (10 MB) respondem 413. Cada caso tem teste que falhava antes da correção.
+
+### Problema 15 — A instalação documentada não funcionava numa máquina nova
+
+**Problema:** o build do Docker e o passo B da instalação falhavam numa máquina limpa; só funcionava no notebook do AGV, já configurado.
+**Causa:** os dois instalavam o pacote `python3-freenect`, que **não existe** no Ubuntu (22.04, 24.04) nem no Debian (11, 12, 13): só a biblioteca C (`libfreenect-dev`) é empacotada. Descoberto quando o CI passou a montar o ambiente do zero.
+**Solução:** `scripts/instalar_freenect_python.sh` compila o driver Python a partir do código-fonte do OpenKinect/libfreenect (v0.7.5, compatível com Cython 3) e confere o import. O Dockerfile, o passo B e o spec do PyInstaller passaram a usar esse caminho, e o CI valida os três a cada push.
+
+### Problema 16 — O executável do PyInstaller não abria
+
+**Problema:** o binário gerado por `pyinstaller launch_production.spec` fechava ao iniciar.
+**Causa:** o pacote não incluía os modelos do reconhecimento facial (`face_recognition_models/models/*.dat`), lidos só em tempo de execução; o erro era `Unable to open ... shape_predictor_68_face_landmarks.dat`. Provavelmente acontecia desde que o reconhecimento facial entrou no projeto.
+**Solução:** o spec passou a empacotar esses arquivos (`collect_data_files("face_recognition_models")`). O CI gera o executável e confere que ele sobe e responde a cada push.
 ---
 
 ## 30. Melhorias Futuras

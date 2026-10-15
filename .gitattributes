@@ -1,2 +1,2 @@
-# Scripts shell sempre com LF: com CRLF o bash do Linux/Docker falha ($'').
+# Scripts shell sempre com LF: com CRLF o bash do Linux/Docker falha (erro com ).
 *.sh text eol=lf
