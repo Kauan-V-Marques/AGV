@@ -1,6 +1,7 @@
 """Aplicacao Flask: painel, streams MJPEG e API REST do agv."""
 
 import math
+import mimetypes
 import os
 import socket
 
@@ -21,6 +22,10 @@ from pc_agv.hardware import kinect
 from pc_agv.visao import rostos
 from pc_agv.web import mjpeg
 
+
+# O painel usa modulos ES: o navegador so os executa com o tipo JavaScript correto,
+# e no Windows o mimetypes pode herdar outro tipo do registro do sistema.
+mimetypes.add_type("text/javascript", ".js")
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 

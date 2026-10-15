@@ -32,6 +32,13 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      - name: Sintaxe do JavaScript do painel
+        run: |
+          for f in pc_agv/web/static/painel.js pc_agv/web/static/js/*.js; do
+            cp "$f" /tmp/verificar.mjs
+            node --check /tmp/verificar.mjs || { echo "::error file=$f::erro de sintaxe"; exit 1; }
+          done
+
       - name: Testes com cobertura
         run: |
           coverage run --source=pc_agv -m unittest discover -s tests -v
