@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: Testes e lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Dependencias do sistema (compilar o dlib)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake build-essential
+
+      - name: Dependencias Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt coverage ruff
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Testes com cobertura
+        run: |
+          coverage run --source=pc_agv -m unittest discover -s tests -v
+          coverage report --fail-under=80
+
+  docker:
+    name: Imagem Docker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build da imagem
+        run: docker build -t agv-servidor .
+
+      - name: Driver do Kinect importa dentro da imagem
+        run: docker run --rm agv-servidor python -c "import freenect; print('freenect ok')"
+
+      - name: Servidor responde sem hardware
+        run: |
+          docker run -d --name agv -p 5000:5000 -e AGV_ARDUINO_ENABLED=0 agv-servidor
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5000/api/status > /dev/null; then echo "servidor ok"; exit 0; fi
+            sleep 2
+          done
+          docker logs agv
+          exit 1
+
+  executavel:
+    name: Instalacao no Ubuntu e executavel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Passo B do README (sem Docker)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip python3-dev python3-freenect libfreenect-dev libfreenect-bin build-essential cmake
+          pip3 install -r requirements.txt --break-system-packages
+
+      - name: Driver do Kinect e numpy juntos
+        run: python3 -c "import freenect, numpy; print('freenect ok; numpy', numpy.__version__)"
+
+      - name: Gerar o executavel (PyInstaller)
+        run: |
+          pip3 install pyinstaller --break-system-packages
+          python3 -m PyInstaller launch_production.spec
+
+      - name: Executavel responde sem hardware
+        run: |
+          AGV_ARDUINO_ENABLED=0 ./dist/launch_production > agv.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5000/api/status > /dev/null; then echo "executavel ok"; exit 0; fi
+            sleep 2
+          done
+          cat agv.log
+          exit 1
