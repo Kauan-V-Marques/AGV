@@ -1,180 +1,457 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-tema="escuro">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>agv</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d141d">
+  <title>AGV · Painel de Controle</title>
   <link rel="stylesheet" href="/static/painel.css">
 </head>
 <body>
-  <main class="shell">
-    <section class="hero">
-            <div id="net-banner" hidden style="background:#7a1a1a;color:#fff;border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;letter-spacing:0.03em;text-align:center;"></div>
-      <div class="hero-top">
-        <div>
-          <h1>agv</h1>
-          <p>Controle pelo navegador com video ao vivo do Kinect, mapa de profundidade e modo autonomo simples por distancia.</p>
-        </div>
-        <div class="chips">
-          <div class="chip" id="chip-mode">modo manual</div>
-          <div class="chip" id="chip-kinect">kinect offline</div>
-                    <div class="chip" id="chip-zed">zed offline</div>
-          <div class="chip" id="chip-serial">serial desconectada</div>
-          <div class="chip" id="chip-face">face sem cadastro</div>
-        </div>
+  <!-- Icones em SVG embutido: o painel funciona sem internet -->
+  <svg class="icones" aria-hidden="true">
+    <symbol id="i-agv" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="10" rx="2"/><circle cx="8" cy="18.5" r="1.6"/><circle cx="16" cy="18.5" r="1.6"/><path d="M8 7V4.5h8V7M9 11h6"/></symbol>
+    <symbol id="i-painel" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h2.2l1.6-2h7.4l1.6 2h2.2A1.5 1.5 0 0 1 21 7.5v10A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></symbol>
+    <symbol id="i-grafico" viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 5-7 4 4"/><path d="M3 21h18"/></symbol>
+    <symbol id="i-ajustes" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></symbol>
+    <symbol id="i-cerebro" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3h0a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3h0a3 3 0 0 1-3-3"/></symbol>
+    <symbol id="i-rosto" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
+    <symbol id="i-parar" viewBox="0 0 24 24"><path d="M8.2 2.5h7.6l5.7 5.7v7.6l-5.7 5.7H8.2l-5.7-5.7V8.2z"/><path d="M9 9h6v6H9z" class="preenchido"/></symbol>
+    <symbol id="i-tela-cheia" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-foto" viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-trocar" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
+    <symbol id="i-sinal" viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1" class="preenchido"/></symbol>
+    <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-lua" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+    <symbol id="i-recarregar" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+    <symbol id="i-cima" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-baixo" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+    <symbol id="i-centro" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></symbol>
+    <symbol id="i-enviar" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+    <symbol id="i-fechar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-seta" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  </svg>
+
+  <!-- ── Menu lateral ─────────────────────────────────────────────── -->
+  <aside class="lateral" id="lateral">
+    <div class="lateral-marca">
+      <span class="logo" aria-hidden="true"><svg><use href="#i-agv"/></svg></span>
+      <div><strong>AGV</strong><small>Painel de Controle</small></div>
+    </div>
+    <nav class="menu" aria-label="Seções">
+      <button class="menu-item ativo" type="button" data-secao="painel" aria-current="page">
+        <svg><use href="#i-painel"/></svg><span>Painel</span><em class="menu-selo">ao vivo</em>
+      </button>
+      <button class="menu-item" type="button" data-secao="cameras">
+        <svg><use href="#i-camera"/></svg><span>Câmeras</span>
+      </button>
+      <button class="menu-item" type="button" data-secao="telemetria">
+        <svg><use href="#i-grafico"/></svg><span>Telemetria</span>
+      </button>
+      <button class="menu-item" type="button" data-secao="configuracoes">
+        <svg><use href="#i-ajustes"/></svg><span>Configurações</span>
+      </button>
+      <p class="menu-grupo">Em breve</p>
+      <button class="menu-item" type="button" disabled title="Auto-mapeamento: em desenvolvimento">
+        <svg><use href="#i-mapa"/></svg><span>Mapa</span>
+      </button>
+      <button class="menu-item" type="button" disabled title="Auto-aprendizado: em desenvolvimento">
+        <svg><use href="#i-cerebro"/></svg><span>Aprendizado</span>
+      </button>
+    </nav>
+    <div class="lateral-rodape">
+      <button class="botao-icone" id="btn-tema" type="button" title="Alternar tema claro/escuro" aria-label="Alternar tema">
+        <svg class="so-escuro"><use href="#i-sol"/></svg>
+        <svg class="so-claro"><use href="#i-lua"/></svg>
+      </button>
+      <span class="versao">v1.1 · UPX RA</span>
+    </div>
+  </aside>
+  <div class="lateral-fundo" id="lateral-fundo"></div>
+
+  <div class="principal">
+    <!-- ── Barra superior ────────────────────────────────────────── -->
+    <header class="topo">
+      <button class="botao-icone so-celular" id="btn-menu" type="button" aria-label="Abrir menu"><svg><use href="#i-menu"/></svg></button>
+      <h1 class="topo-titulo" id="titulo-secao">Painel</h1>
+
+      <div class="estado-agv" id="estado-agv" data-estado="off" title="Estado do AGV">
+        <span class="ponto"></span><span>AGV</span><strong id="estado-agv-texto">CONECTANDO</strong>
       </div>
-            <div class="access-row">
-                <span class="access-link" id="access-link">Link para outro dispositivo: carregando...</span>
-                <button class="copy-link-button" id="btn-copy-link" type="button">Copiar link</button>
+
+      <ul class="status-lista" aria-label="Componentes">
+        <li class="status" id="st-kinect" data-estado="off"><span class="ponto"></span>Kinect</li>
+        <li class="status" id="st-zed" data-estado="off"><span class="ponto"></span>ZED</li>
+        <li class="status" id="st-serial" data-estado="off"><span class="ponto"></span>Arduino</li>
+        <li class="status" id="st-rede" data-estado="off" title="Tempo de resposta do AGV"><svg><use href="#i-sinal"/></svg><span id="st-rede-texto">-- ms</span></li>
+      </ul>
+
+      <button class="botao-emergencia" id="btn-stop" type="button" title="Parada total: zera os motores e volta ao modo manual">
+        <svg><use href="#i-parar"/></svg><span>PARADA DE EMERGÊNCIA</span>
+      </button>
+    </header>
+
+    <div class="aviso-rede" id="net-banner" role="status" hidden></div>
+
+    <main class="conteudo">
+      <!-- ── Painel (dashboard) ──────────────────────────────────── -->
+      <section class="secao ativa" id="secao-painel" data-titulo="Painel">
+        <div class="dash">
+          <!-- Camera principal -->
+          <article class="quadro q-camera">
+            <header class="quadro-topo">
+              <h2>Câmera principal</h2>
+              <span class="quadro-sub"><span data-rotulo-principal>Kinect RGB</span> · clique na miniatura para trocar</span>
+            </header>
+            <div class="video" data-slot="principal">
+              <div class="video-rotulo">
+                <strong>Vídeo ao vivo</strong>
+                <span data-rotulo-principal>Kinect RGB</span>
+              </div>
+              <div class="video-acoes">
+                <button class="acao-video" id="btn-foto" type="button" title="Salvar o quadro atual"><svg><use href="#i-foto"/></svg><span>Foto</span></button>
+                <button class="acao-video" id="btn-hud-toggle" type="button" title="HUD em tela cheia"><svg><use href="#i-tela-cheia"/></svg><span>HUD</span></button>
+              </div>
+              <span class="selo-modo" id="selo-modo">MANUAL</span>
             </div>
-    </section>
+            <div class="miniaturas">
+              <button class="miniatura" type="button" title="Trocar com a câmera principal">
+                <div class="video video-mini" data-slot="mini"></div>
+                <span class="miniatura-legenda"><svg><use href="#i-trocar"/></svg><span data-rotulo-mini>Profundidade</span></span>
+              </button>
+              <div class="miniatura-info">
+                <strong>Outras câmeras</strong>
+                <p>Clique na miniatura para trocar com a principal. A ZED fica no quadro de detecção facial.</p>
+              </div>
+            </div>
+          </article>
 
-    <section class="grid">
-      <div class="video-stack">
-        <article class="panel">
-          <h2>RGB Kinect <button class="hud-toggle-btn" id="btn-hud-toggle" type="button" title="Abrir visualizador HUD em tela cheia">⛶ HUD</button></h2>
-          <img class="stream" id="rgb-stream" src="/video" alt="Video RGB do Kinect">
-          <div class="caption">Imagem ao vivo usada para acompanhar o agv. Toque em HUD para tela cheia.</div>
+          <!-- Proximidade -->
+          <article class="quadro q-proximidade">
+            <header class="quadro-topo">
+              <h2>Proximidade</h2>
+              <span class="quadro-sub">Kinect · profundidade</span>
+            </header>
+            <div class="proximidade">
+              <svg class="sensores" viewBox="0 0 220 170" aria-label="Distâncias à frente do AGV">
+                <circle class="anel" cx="110" cy="128" r="40"/>
+                <circle class="anel" cx="110" cy="128" r="75"/>
+                <circle class="anel" cx="110" cy="128" r="110"/>
+                <path class="setor" id="setor-esq" data-nivel="nenhum" d=""/>
+                <path class="setor" id="setor-cen" data-nivel="nenhum" d=""/>
+                <path class="setor" id="setor-dir" data-nivel="nenhum" d=""/>
+                <rect class="agv-corpo" x="92" y="128" width="36" height="34" rx="6"/>
+                <rect class="agv-frente" x="96" y="126" width="28" height="5" rx="2"/>
+                <text x="110" y="168" class="sensor-rotulo">AGV</text>
+              </svg>
+              <div class="leituras">
+                <div class="leitura" id="dist-esq" data-nivel="nenhum"><span>Esquerda</span><strong>--</strong></div>
+                <div class="leitura destaque" id="dist-cen" data-nivel="nenhum"><span>Frente</span><strong>--</strong></div>
+                <div class="leitura" id="dist-dir" data-nivel="nenhum"><span>Direita</span><strong>--</strong></div>
+              </div>
+            </div>
+            <div class="grafico-caixa">
+              <div class="grafico-legenda"><span class="l-cen">frente</span><span class="l-esq">esq</span><span class="l-dir">dir</span><span class="l-tempo">últimos 60 s</span></div>
+              <canvas class="grafico" id="grafico-mini" aria-label="Distâncias nos últimos 60 segundos"></canvas>
+            </div>
+          </article>
+
+          <!-- Controle -->
+          <article class="quadro q-controle">
+            <header class="quadro-topo">
+              <h2>Controle do AGV</h2>
+              <span class="quadro-sub" id="motivo-auto"></span>
+            </header>
+            <div class="segmentado" role="radiogroup" aria-label="Modo de condução">
+              <span class="segmentado-cursor" aria-hidden="true"></span>
+              <button class="mode-button is-selected" type="button" data-mode="manual" id="btn-manual" role="radio" aria-checked="true">Manual</button>
+              <button class="mode-button" type="button" data-mode="auto" id="btn-auto" role="radio" aria-checked="false">Autônomo</button>
+            </div>
+
+            <div class="controle-centro">
+            <div class="pad" id="keyboard-pad">
+              <span></span>
+              <button class="tecla" type="button" data-key="w" aria-label="Frente"><svg><use href="#i-cima"/></svg><kbd>W</kbd></button>
+              <span></span>
+              <button class="tecla" type="button" data-key="a" aria-label="Esquerda"><svg class="girar-esq"><use href="#i-cima"/></svg><kbd>A</kbd></button>
+              <button class="tecla" type="button" data-key="s" aria-label="Ré"><svg><use href="#i-baixo"/></svg><kbd>S</kbd></button>
+              <button class="tecla" type="button" data-key="d" aria-label="Direita"><svg class="girar-dir"><use href="#i-cima"/></svg><kbd>D</kbd></button>
+            </div>
+            <div class="joystick-wrap" id="mobile-joystick" hidden>
+              <div class="joystick-base" id="joystick-base" aria-label="Joystick virtual">
+                <div class="joystick-ring"></div>
+                <div class="joystick-knob" id="joystick-knob"></div>
+              </div>
+              <div class="joystick-readout" id="joystick-readout">Stick: parado</div>
+            </div>
+            <p class="dica" id="control-hint">W A S D ou setas (E também vira à esquerda).</p>
+            </div>
+
+            <div class="medidores">
+              <div class="medidor">
+                <span>Velocidade</span>
+                <div class="medidor-trilho"><div class="medidor-barra" id="medidor-vel"></div><i></i></div>
+                <strong id="valor-vel">0</strong>
+              </div>
+              <div class="medidor">
+                <span>Direção</span>
+                <div class="medidor-trilho"><div class="medidor-barra" id="medidor-dir"></div><i></i></div>
+                <strong id="valor-dir">0</strong>
+              </div>
+            </div>
+          </article>
+
+          <!-- Deteccao facial -->
+          <article class="quadro q-rosto">
+            <header class="quadro-topo">
+              <h2>Detecção facial</h2>
+              <span class="quadro-sub">câmera ZED · traseira</span>
+            </header>
+            <div class="rosto-grade">
+              <div class="video video-rosto" data-slot="zed"></div>
+              <div class="rosto-lado">
+                <label class="campo">
+                  <span>Procurar pessoa</span>
+                  <select id="face-select">
+                    <option value="">Ninguém selecionado</option>
+                  </select>
+                </label>
+                <div class="estado-rosto" id="estado-rosto" data-estado="vazio">
+                  <span class="estado-rosto-icone"><svg><use href="#i-rosto"/></svg></span>
+                  <p id="face-form-status">Cadastre uma foto em Configurações → Rostos.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Telemetria geral -->
+          <article class="quadro q-geral">
+            <header class="quadro-topo">
+              <h2>Telemetria geral</h2>
+              <span class="quadro-sub">atualizada a cada resposta do AGV</span>
+            </header>
+            <div class="resumo">
+              <div class="resumo-item"><span>Velocidade</span><strong id="tg-vel">--</strong><small>comando %</small></div>
+              <div class="resumo-item"><span>Direção</span><strong id="tg-dir">--</strong><small>comando %</small></div>
+              <div class="resumo-item"><span>Tilt do Kinect</span><strong id="tg-tilt">--</strong><small id="tg-tilt-alvo">alvo --</small></div>
+              <div class="resumo-item"><span>Acelerômetro</span><strong id="tg-accel">--</strong><small>x · y · z (m/s²)</small></div>
+              <div class="resumo-item"><span>Quadros/s</span><strong id="tg-fps">--</strong><small>RGB · prof. · ZED</small></div>
+              <div class="resumo-item"><span>Atraso do vídeo</span><strong id="tg-atraso">--</strong><small>idade do último quadro</small></div>
+              <div class="resumo-item"><span>Autônomo</span><strong id="tg-motivo">--</strong><small>última decisão</small></div>
+              <div class="resumo-item"><span>Limite</span><strong id="tg-limite">--</strong><small>velocidade máxima</small></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── Cameras ─────────────────────────────────────────────── -->
+      <section class="secao" id="secao-cameras" data-titulo="Câmeras" hidden>
+        <div class="grade-cameras">
+          <article class="quadro">
+            <header class="quadro-topo"><h2>Kinect RGB</h2><span class="quadro-sub">vista frontal</span></header>
+            <div class="video" data-slot="rgb"></div>
+          </article>
+          <article class="quadro">
+            <header class="quadro-topo"><h2>Profundidade</h2><span class="quadro-sub">quente = perto</span></header>
+            <div class="video" data-slot="depth"></div>
+          </article>
+          <article class="quadro">
+            <header class="quadro-topo"><h2>Câmera ZED</h2><span class="quadro-sub">traseira</span></header>
+            <div class="video" data-slot="zed"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── Telemetria ──────────────────────────────────────────── -->
+      <section class="secao" id="secao-telemetria" data-titulo="Telemetria" hidden>
+        <article class="quadro">
+          <header class="quadro-topo">
+            <h2>Distâncias</h2>
+            <span class="quadro-sub">últimos 60 s · linhas tracejadas = limites do autônomo</span>
+          </header>
+          <canvas class="grafico grafico-grande" id="grafico-grande" aria-label="Distâncias nos últimos 60 segundos"></canvas>
         </article>
+        <div class="grade-metricas">
+          <div class="metrica"><span>Distância frontal</span><strong id="distance">--</strong></div>
+          <div class="metrica"><span>Esquerda</span><strong id="left-clearance">--</strong></div>
+          <div class="metrica"><span>Centro</span><strong id="center-clearance">--</strong></div>
+          <div class="metrica"><span>Direita</span><strong id="right-clearance">--</strong></div>
+          <div class="metrica"><span>Comando ativo</span><strong id="active-command">--</strong></div>
+          <div class="metrica"><span>Decisão do autônomo</span><strong id="auto-reason">--</strong></div>
+          <div class="metrica"><span>Quadros por segundo</span><strong id="fps-status">--</strong></div>
+          <div class="metrica"><span>Rosto</span><strong id="face-status">--</strong></div>
+          <div class="metrica larga"><span>Kinect</span><strong id="kinect-status">--</strong></div>
+          <div class="metrica larga"><span>Câmera ZED</span><strong id="zed-status">--</strong></div>
+          <div class="metrica larga"><span>Arduino</span><strong id="serial-status">--</strong></div>
+        </div>
+      </section>
 
-        <article class="panel">
-          <h2>Depth Kinect</h2>
-          <img class="stream" id="depth-stream" src="/depth_map" alt="Mapa de profundidade do Kinect">
-          <div class="caption">Mapa de distancia usado no modo autonomo.</div>
-        </article>
+      <!-- ── Configuracoes ───────────────────────────────────────── -->
+      <section class="secao" id="secao-configuracoes" data-titulo="Configurações" hidden>
+        <p class="trilha"><span>Configurações</span><svg><use href="#i-seta"/></svg><strong>Detalhes</strong></p>
+        <div class="grade-config">
 
-                <article class="panel">
-                    <h2>Webcam ZED</h2>
-                    <img class="stream" src="/zed" alt="Video da webcam ZED">
-                    <div class="caption">Camera extra para monitorar a traseira do agv.</div>
-                </article>
-      </div>
+          <!-- Coluna 1: cameras e Kinect -->
+          <article class="quadro c-cameras">
+            <header class="quadro-topo"><h2>Câmeras</h2><span class="quadro-sub">clique numa miniatura para ampliar</span></header>
+            <div class="config-cameras">
+              <div class="video" data-slot="principal">
+                <div class="video-rotulo"><strong data-rotulo-principal>Kinect RGB</strong><span>visualização</span></div>
+              </div>
+              <div class="lista-miniaturas">
+                <button class="miniatura" type="button" title="Ampliar esta câmera">
+                  <div class="video video-mini" data-slot="mini"></div>
+                  <span class="miniatura-legenda"><svg><use href="#i-trocar"/></svg><span data-rotulo-mini>--</span></span>
+                </button>
+                <button class="miniatura" type="button" title="Ampliar esta câmera">
+                  <div class="video video-mini" data-slot="mini"></div>
+                  <span class="miniatura-legenda"><svg><use href="#i-trocar"/></svg><span data-rotulo-mini>--</span></span>
+                </button>
+              </div>
+            </div>
+            <div class="bloco">
+              <h3>Kinect</h3>
+              <div class="linha-config">
+                <span>Inclinação (tilt)</span>
+                <div class="grupo-botoes">
+                  <button class="botao" id="btn-tilt-up" type="button"><svg><use href="#i-cima"/></svg>Subir</button>
+                  <button class="botao" id="btn-tilt-center" type="button"><svg><use href="#i-centro"/></svg>Centralizar</button>
+                  <button class="botao" id="btn-tilt-down" type="button"><svg><use href="#i-baixo"/></svg>Descer</button>
+                </div>
+              </div>
+              <div class="linha-config">
+                <span>Nivelamento pelo acelerômetro</span>
+                <label class="interruptor">
+                  <input type="checkbox" id="btn-stabilization">
+                  <span class="interruptor-trilho"><span class="interruptor-bola"></span></span>
+                  <span class="interruptor-texto">Estabilização</span>
+                </label>
+              </div>
+              <div class="linha-config">
+                <span>Captura travada?</span>
+                <button class="botao" id="btn-reconnect" type="button"><svg><use href="#i-recarregar"/></svg>Reconectar Kinect</button>
+              </div>
+            </div>
+          </article>
 
-      <div class="side">
-        <section class="panel">
-          <h2>Modo</h2>
-          <div class="mode-row">
-            <button class="mode-button is-selected" data-mode="manual" id="btn-manual">Manual</button>
-            <button class="mode-button" data-mode="auto" id="btn-auto">Autonomo</button>
-          </div>
-          <div class="action-row" style="margin-top:10px;">
-            <button id="btn-reconnect">Reconectar Kinect</button>
-                        <button id="btn-stabilization">Estabilizacao ON</button>
-            <button id="btn-tilt-up">Tilt +</button>
-            <button id="btn-tilt-center">Centralizar</button>
-            <button id="btn-tilt-down">Tilt -</button>
-            <button class="stop-button" id="btn-stop">Parada total</button>
-          </div>
-        </section>
+          <!-- Coluna 2: conducao -->
+          <article class="quadro c-conducao">
+            <header class="quadro-topo"><h2>Condução</h2></header>
+            <div class="bloco">
+              <h3>Velocidade máxima</h3>
+              <div class="controle-deslizante">
+                <input type="range" class="speed-slider" id="speed-limit-slider" min="0" max="100" value="100" step="5" aria-label="Velocidade máxima">
+                <output id="speed-limit-display" for="speed-limit-slider">100%</output>
+              </div>
+              <p class="dica">Limita o PWM dos motores e vale na hora. Reduza antes de manobrar em espaços apertados.</p>
+            </div>
+            <div class="bloco">
+              <h3>Limites do modo autônomo</h3>
+              <table class="tabela">
+                <thead><tr><th>Zona</th><th>Distância à frente</th><th>O que o AGV faz</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="etiqueta" data-nivel="perigo">perigo</span></td><td>&lt; 0,35 m</td><td>para e gira para o lado mais livre</td></tr>
+                  <tr><td><span class="etiqueta" data-nivel="alerta">alerta</span></td><td>&lt; 0,60 m</td><td>desvio curto a 18%</td></tr>
+                  <tr><td><span class="etiqueta" data-nivel="atencao">atenção</span></td><td>&lt; 0,95 m</td><td>desvio suave a 32%</td></tr>
+                  <tr><td><span class="etiqueta" data-nivel="livre">livre</span></td><td>≥ 0,95 m</td><td>segue a 48%, corrigindo pelos lados</td></tr>
+                </tbody>
+              </table>
+              <p class="dica">Definidos em <code>pc_agv/controle.py</code>; as mesmas cores aparecem na Proximidade do painel.</p>
+            </div>
+            <div class="bloco">
+              <h3>Segurança</h3>
+              <ul class="lista-seguranca">
+                <li><strong>Watchdog do servidor:</strong> sem comando novo em 2 s no manual, os motores param.</li>
+                <li><strong>Timeout do Arduino:</strong> sem comando em 500 ms, o firmware para os motores.</li>
+                <li><strong>Parada de emergência:</strong> sempre visível na barra superior e no HUD.</li>
+              </ul>
+            </div>
+          </article>
 
-                <section class="panel">
-                    <h2>Rostos</h2>
-                    <div class="face-tools">
-                        <label class="face-field">
-                            <span>Pessoa para procurar na ZED</span>
-                            <select id="face-select">
-                                <option value="">Nenhuma pessoa selecionada</option>
-                            </select>
-                        </label>
-                        <label class="face-field">
-                            <span>Nome do rosto</span>
-                            <input id="face-name-input" type="text" maxlength="60" placeholder="Ex.: Kauan">
-                        </label>
-                        <label class="face-field">
-                            <span>Imagem para cadastro</span>
-                            <input id="face-file-input" type="file" accept="image/*">
-                        </label>
-                        <button class="face-register-button" id="btn-face-register" type="button">Registrar rosto</button>
-                        <p class="face-helper" id="face-form-status">Escolha uma pessoa no seletor. O quadrado so aparece na ZED quando o rosto escolhido for encontrado.</p>
-                    </div>
-                </section>
-
-        <section class="panel">
-          <h2>Controle Manual</h2>
-                    <div class="manual-layout">
-                        <div class="pad" id="keyboard-pad">
-                            <button class="blank" aria-hidden="true"></button>
-                            <button data-key="w">W</button>
-                            <button class="blank" aria-hidden="true"></button>
-                            <button data-key="a">A</button>
-                            <button data-key="s">S</button>
-                            <button data-key="d">D</button>
-                        </div>
-                        <div class="joystick-wrap" id="mobile-joystick" hidden>
-                            <div class="joystick-base" id="joystick-base" aria-label="Controle por stick virtual">
-                                <div class="joystick-ring"></div>
-                                <div class="joystick-knob" id="joystick-knob"></div>
-                            </div>
-                            <div class="joystick-readout" id="joystick-readout">Stick: parado</div>
-                        </div>
-          </div>
-                    <p class="footer-note" id="control-hint">No celular aparece stick virtual. No PC, use W A S D, setas ou E como esquerda.</p>
-        </section>
-
-        <section class="panel">
-          <h2>Telemetria</h2>
-          <div class="telemetry">
-            <div class="metric"><span>Distancia frontal</span><strong id="distance">--</strong></div>
-            <div class="metric"><span>Esquerda</span><strong id="left-clearance">--</strong></div>
-            <div class="metric"><span>Centro</span><strong id="center-clearance">--</strong></div>
-            <div class="metric"><span>Direita</span><strong id="right-clearance">--</strong></div>
-            <div class="metric"><span>Comando ativo</span><strong id="active-command">--</strong></div>
-            <div class="metric"><span>Autonomo</span><strong id="auto-reason">--</strong></div>
-            <div class="metric"><span>Kinect</span><strong id="kinect-status">--</strong></div>
-            <div class="metric"><span>Webcam ZED</span><strong id="zed-status">--</strong></div>
-            <div class="metric"><span>Arduino</span><strong id="serial-status">--</strong></div>
-            <div class="metric"><span>Face</span><strong id="face-status">--</strong></div>
-            <div class="metric"><span>FPS</span><strong id="fps-status">--</strong></div>
-          </div>
-        </section>
-
-        <section class="panel">
-          <h2>Configuracoes</h2>
-          <div class="telemetry">
-            <div class="metric">
-              <span>Modo escuro</span>
-              <label class="toggle-switch" title="Alternar modo escuro">
-                <input type="checkbox" id="dark-mode-toggle">
-                <span class="toggle-track"></span>
-                <span class="toggle-thumb"></span>
+          <!-- Coluna 3: sistema -->
+          <article class="quadro c-sistema">
+            <header class="quadro-topo"><h2>Sistema</h2></header>
+            <div class="bloco">
+              <h3>Cadastrar rosto</h3>
+              <label class="campo">
+                <span>Nome da pessoa</span>
+                <input id="face-name-input" type="text" maxlength="60" placeholder="Ex.: Kauan" autocomplete="off">
+              </label>
+              <label class="soltar-arquivo" id="area-foto">
+                <input id="face-file-input" type="file" accept="image/*" aria-label="Foto do rosto">
+                <img id="previa-foto" alt="" hidden>
+                <span class="soltar-texto" id="texto-foto"><svg><use href="#i-enviar"/></svg>Clique ou arraste a foto do rosto</span>
+              </label>
+              <button class="botao botao-primario largo" id="btn-face-register" type="button">
+                <span class="carregador" aria-hidden="true"></span><span>Registrar rosto</span>
+              </button>
+            </div>
+            <div class="bloco">
+              <h3>Abrir em outro dispositivo</h3>
+              <div class="caixa-link">
+                <code id="access-link">carregando...</code>
+                <button class="botao" id="btn-copy-link" type="button">Copiar</button>
+              </div>
+              <p class="dica">No celular ou em outro computador na mesma rede Wi-Fi.</p>
+            </div>
+            <div class="bloco">
+              <h3>Aparência</h3>
+              <label class="interruptor">
+                <input type="checkbox" id="dark-mode-toggle" checked>
+                <span class="interruptor-trilho"><span class="interruptor-bola"></span></span>
+                <span class="interruptor-texto">Tema escuro</span>
+              </label>
+              <label class="interruptor">
+                <input type="checkbox" id="som-toggle" checked>
+                <span class="interruptor-trilho"><span class="interruptor-bola"></span></span>
+                <span class="interruptor-texto">Bipe quando o rosto for encontrado</span>
               </label>
             </div>
-            <div class="metric" style="flex-direction:column;align-items:stretch;gap:10px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span>Velocidade maxima</span>
-                <strong id="speed-limit-display">100%</strong>
-              </div>
-              <input type="range" class="speed-slider" id="speed-limit-slider" min="0" max="100" value="100" step="5">
-            </div>
-          </div>
-        </section>
-      </div>
-    </section>
-  </main>
+            <p class="dica salvo"><svg><use href="#i-ok"/></svg>As mudanças valem na hora; não é preciso salvar.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
 
-    <div class="hud-overlay" id="hud-overlay" hidden>
-        <div class="hud-main-frame" id="hud-main-frame"></div>
-        <div class="hud-top-bar">
-            <div class="hud-chip" id="hud-chip-mode">MODO --</div>
-            <div class="hud-chip" id="hud-chip-kinect">KINECT --</div>
-            <div class="hud-chip" id="hud-chip-serial">SERIAL --</div>
-        </div>
-        <div class="hud-corner-pip" id="hud-pip-frame">
-            <span class="hud-pip-label">Infra / Profundidade</span>
-        </div>
-        <div class="hud-telemetry" id="hud-telemetry">
-            <div class="hud-metric"><span>Dist</span><strong id="hud-distance">--</strong></div>
-            <div class="hud-metric"><span>Esq</span><strong id="hud-left">--</strong></div>
-            <div class="hud-metric"><span>Cen</span><strong id="hud-center">--</strong></div>
-            <div class="hud-metric"><span>Dir</span><strong id="hud-right">--</strong></div>
-            <div class="hud-metric"><span>Cmd</span><strong id="hud-cmd">--</strong></div>
-            <div class="hud-metric"><span>Fps</span><strong id="hud-fps">--</strong></div>
-        </div>
-        <p class="hud-hint" id="hud-hint">WASD / setas para mover · ESC para sair</p>
-        <div class="hud-joystick-wrap" id="hud-joystick-wrap" hidden></div>
-        <button class="hud-exit-btn" id="btn-hud-exit" type="button">Sair ✕</button>
+  <!-- Elementos de video: o JS os coloca nos espacos (data-slot) da secao aberta -->
+  <div class="garagem" aria-hidden="true">
+    <img class="stream" id="rgb-stream" src="/video" alt="Vídeo RGB do Kinect">
+    <img class="stream" id="depth-stream" src="/depth_map" alt="Mapa de profundidade do Kinect">
+    <img class="stream" id="zed-stream" src="/zed" alt="Vídeo da câmera ZED">
+  </div>
+
+  <!-- ── HUD em tela cheia ───────────────────────────────────────── -->
+  <div class="hud-overlay" id="hud-overlay" hidden>
+    <div class="hud-main-frame" id="hud-main-frame"></div>
+    <div class="hud-top-bar">
+      <div class="hud-chip" id="hud-chip-mode">MODO --</div>
+      <div class="hud-chip" id="hud-chip-kinect">KINECT --</div>
+      <div class="hud-chip" id="hud-chip-serial">SERIAL --</div>
     </div>
+    <div class="hud-corner-pip" id="hud-pip-frame">
+      <span class="hud-pip-label">Profundidade</span>
+    </div>
+    <div class="hud-telemetry" id="hud-telemetry">
+      <div class="hud-metric"><span>Dist</span><strong id="hud-distance">--</strong></div>
+      <div class="hud-metric"><span>Esq</span><strong id="hud-left">--</strong></div>
+      <div class="hud-metric"><span>Cen</span><strong id="hud-center">--</strong></div>
+      <div class="hud-metric"><span>Dir</span><strong id="hud-right">--</strong></div>
+      <div class="hud-metric"><span>Cmd</span><strong id="hud-cmd">--</strong></div>
+      <div class="hud-metric"><span>Fps</span><strong id="hud-fps">--</strong></div>
+    </div>
+    <p class="hud-hint" id="hud-hint">WASD / setas para mover · ESC para sair</p>
+    <div class="hud-joystick-wrap" id="hud-joystick-wrap" hidden></div>
+    <button class="hud-exit-btn" id="btn-hud-exit" type="button"><svg><use href="#i-fechar"/></svg>Sair</button>
+    <button class="hud-parar" id="btn-hud-stop" type="button" title="Parada total"><svg><use href="#i-parar"/></svg></button>
+  </div>
 
-  <script src="/static/painel.js"></script>
+  <div class="avisos" id="avisos" aria-live="polite"></div>
+
+  <script type="module" src="/static/painel.js"></script>
 </body>
 </html>
