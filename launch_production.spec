@@ -8,6 +8,8 @@ Gera um unico binario console: dist/launch_production
 import glob
 import os
 
+from PyInstaller.utils.hooks import collect_data_files
+
 try:
     # Onde quer que o driver tenha sido instalado (pip --user, sistema, venv)
     import freenect as _freenect_mod
@@ -36,7 +38,8 @@ a = Analysis(
     pathex=[],
     binaries=_binaries,
     # Painel web (HTML/CSS/JS) fica fora do Python; o Flask le de pc_agv/web/static.
-    datas=[("pc_agv/web/static", "pc_agv/web/static")],
+    # Os modelos .dat do face_recognition_models sao carregados em tempo de execucao.
+    datas=[("pc_agv/web/static", "pc_agv/web/static")] + collect_data_files("face_recognition_models"),
     hiddenimports=[
         "pc_agv.iniciar_sistema",
         "pc_agv.web.rotas",

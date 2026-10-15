@@ -4,6 +4,22 @@ Todas as mudanças relevantes do projeto. Os marcos `v1.0.x` foram registrados n
 
 ## [Não lançado]
 
+### Qualidade
+
+- Testes de 19 para 117, todos sem hardware; cobertura do `pc_agv` de 28% para 81% (`controle.py` 99%).
+- CI no GitHub Actions: lint, testes com cobertura mínima de 80%, build da imagem Docker e do executável (PyInstaller) a cada push.
+- `requirements.txt` com faixas testadas e `setuptools<81` (o `face_recognition_models` depende do `pkg_resources`).
+- Lint com Ruff (`ruff.toml`), sem avisos.
+
+### Corrigido (encontrado pelos testes)
+
+- Cadastro de rosto apagava o banco de rostos inteiro quando `logs/encodings.pkl` estava ilegível.
+- `POST /api/kinect/tilt` com ângulo inválido dava erro 500; `nan`/`inf` chegavam ao motor. Agora responde 400.
+- Upload sem limite de tamanho: novo `AGV_MAX_UPLOAD_MB` (10 MB), acima disso 413.
+- README: a tabela do protocolo dizia `140,-177` para girar parado; o valor enviado é `140,-124`.
+- Instalação do zero (Docker e passo B) falhava: o pacote `python3-freenect` não existe no Ubuntu/Debian. Novo `scripts/instalar_freenect_python.sh` compila o driver do Kinect a partir do código-fonte; o painel passa a dizer "driver freenect nao instalado".
+- Executável do PyInstaller não abria: faltavam os modelos `.dat` do reconhecimento facial no pacote.
+
 ### Refatorado
 
 - `pc_agv/iniciar_sistema.py` (3.700 linhas) dividido em módulos por responsabilidade: `config`, `estado`, `util`, `runtime`, `controle`, `telemetria`, `hardware/` (kinect, zed, arduino), `visao/` (profundidade, rostos) e `web/` (rotas, mjpeg). O arquivo virou só o ponto de entrada (65 linhas).
