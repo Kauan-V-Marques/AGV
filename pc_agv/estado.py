@@ -22,6 +22,7 @@ state = {
     "zed_device": ZED_DEVICE,
     "depth": None,
     "depth_mm": False,
+    "depth_at": 0.0,
     "distance_m": None,
     "left_clearance_m": None,
     "center_clearance_m": None,
@@ -40,6 +41,9 @@ state = {
     "zed_last_frame_at": 0.0,
 }
 
+# manual = operador; auto = regras de profundidade; ia = modelo treinado pelo aprendizado
+MODOS = ("manual", "auto", "ia")
+
 control_lock = threading.Lock()
 
 control_state = {
@@ -50,6 +54,8 @@ control_state = {
     "active_steering": 0,
     "updated_at": time.time(),
     "last_source": "boot",
+    # quem gerou o comando que o agv-control enviou por ultimo (operador, watchdog, ia...)
+    "active_source": "boot",
     "arduino_sent": False,
     "arduino_error": None,
 }

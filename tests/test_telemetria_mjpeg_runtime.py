@@ -72,7 +72,7 @@ class TestRuntime(unittest.TestCase):
         runtime.stop_runtime()
         estado.stop_event.clear()
 
-    def test_sobe_as_cinco_threads_uma_vez_e_encerra(self):
+    def test_sobe_as_seis_threads_uma_vez_e_encerra(self):
         chamadas = []
 
         def alvo(nome):
@@ -85,6 +85,9 @@ class TestRuntime(unittest.TestCase):
                 patch("pc_agv.visao.rostos.face_worker_loop", alvo("rostos")), \
                 patch("pc_agv.controle.autopilot_loop", alvo("autopiloto")), \
                 patch("pc_agv.controle.control_loop", alvo("controle")), \
+                patch("pc_agv.aprendizado.servico.aprendizado_loop", alvo("aprendizado")), \
+                patch("pc_agv.aprendizado.servico.iniciar") as abrir_banco, \
+                patch("pc_agv.aprendizado.servico.encerrar") as fechar_banco, \
                 patch("pc_agv.visao.rostos.load_known_faces") as carregar, \
                 patch("pc_agv.hardware.arduino.close") as fechar:
             runtime.start_runtime()
@@ -92,9 +95,13 @@ class TestRuntime(unittest.TestCase):
             nomes = sorted(t.name for t in runtime._threads)
             runtime.stop_runtime()
 
-        self.assertEqual(nomes, ["agv-autopilot", "agv-control", "agv-kinect", "agv-zed", "agv-zed-face"])
-        self.assertEqual(sorted(chamadas), ["autopiloto", "controle", "kinect", "rostos", "zed"])
+        self.assertEqual(
+            nomes, ["agv-aprendizado", "agv-autopilot", "agv-control", "agv-kinect", "agv-zed", "agv-zed-face"],
+        )
+        self.assertEqual(sorted(chamadas), ["aprendizado", "autopiloto", "controle", "kinect", "rostos", "zed"])
         carregar.assert_called_once_with()
+        abrir_banco.assert_called_once_with()
+        fechar_banco.assert_called_once_with()
         fechar.assert_called_once_with()
         self.assertTrue(estado.stop_event.is_set())
         self.assertEqual(runtime._threads, [])

@@ -100,6 +100,25 @@ class TestLoopDeControle(unittest.TestCase):
         envio.assert_called_once_with(32, -45, "auto", "autopilot")
         self.assertEqual((final["active_speed"], final["active_steering"]), (32, -45))
 
+    def test_modo_ia_envia_o_comando_da_rede(self):
+        with patch.dict(estado.autopilot_state, {"target_speed": 30, "target_steering": 12}):
+            envio, final = self._uma_volta(mode="ia", manual_speed=0, manual_steering=0, updated_at=util.now())
+        envio.assert_called_once_with(30, 12, "ia", "ia")
+        self.assertEqual(final["active_source"], "ia")
+
+    def test_correcao_do_operador_vale_no_modo_ia(self):
+        with patch.dict(estado.autopilot_state, {"target_speed": 30, "target_steering": 12}):
+            envio, final = self._uma_volta(mode="ia", manual_speed=0, manual_steering=-70,
+                                           last_source="site-correcao", updated_at=util.now())
+        envio.assert_called_once_with(0, -70, "ia", "correcao")
+        self.assertEqual(final["active_source"], "correcao")
+
+    def test_correcao_antiga_devolve_o_controle_a_ia(self):
+        with patch.dict(estado.autopilot_state, {"target_speed": 30, "target_steering": 12}):
+            envio, _ = self._uma_volta(mode="ia", manual_speed=100, manual_steering=0,
+                                       updated_at=util.now() - (controle.IA_CORRECAO_JANELA_S + 1.0))
+        envio.assert_called_once_with(30, 12, "ia", "ia")
+
     def test_falha_no_envio_registra_o_erro_do_arduino(self):
         _, final = self._uma_volta(envio_ok=False, ultimo_erro="nenhuma porta serial encontrada",
                                    mode="manual", manual_speed=0, manual_steering=0, updated_at=util.now())
@@ -120,6 +139,13 @@ class TestLoopDoAutopiloto(unittest.TestCase):
         final = self._uma_volta("auto")
         self.assertTrue(final["running"])
         self.assertEqual((final["target_speed"], final["target_steering"], final["last_reason"]), (20, 5, "teste"))
+
+    def test_no_modo_ia_pergunta_a_rede(self):
+        with patch.object(controle.aprendizado, "decidir", return_value=(25, -40, "ia")) as decidir:
+            final = self._uma_volta("ia")
+        decidir.assert_called_once_with()
+        self.assertTrue(final["running"])
+        self.assertEqual((final["target_speed"], final["target_steering"], final["last_reason"]), (25, -40, "ia"))
 
     def test_no_manual_zera_o_alvo(self):
         final = self._uma_volta("manual")

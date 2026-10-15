@@ -2,7 +2,7 @@ import io
 import unittest
 from unittest.mock import patch
 
-from apoio import estado_isolado, rostos_isolado
+from apoio import aprendizado_isolado, estado_isolado, rostos_isolado
 
 from pc_agv import estado, util
 from pc_agv.web import rotas
@@ -53,7 +53,7 @@ class TestStatus(_Base):
             with self.subTest(caminho=caminho):
                 dados = self.client.get(caminho).get_json()
                 self.assertTrue(dados["ok"])
-                for chave in ("state", "agv", "autopilot", "arduino", "kinect", "zed", "face", "settings", "runtime"):
+                for chave in ("state", "agv", "autopilot", "arduino", "kinect", "zed", "face", "ia", "settings", "runtime"):
                     self.assertIn(chave, dados)
 
     def test_link_de_acesso_usa_o_ip_da_rede(self):
@@ -99,6 +99,87 @@ class TestControle(_Base):
         final = estado.control_state
         self.assertEqual((final["mode"], final["manual_speed"], final["active_speed"], final["last_source"]),
                          ("manual", 0, 0, "stop"))
+
+
+    def test_modo_ia_sem_modelo_e_recusado(self):
+        estado.control_state["mode"] = "manual"
+        with patch("pc_agv.aprendizado.servico.tem_modelo", return_value=False):
+            resposta = self.client.post("/api/control", json={"mode": "ia"})
+        self.assertEqual((resposta.status_code, resposta.get_json()["error"]), (409, "sem_modelo"))
+        self.assertEqual(estado.control_state["mode"], "manual")
+
+    def test_modo_ia_com_modelo_aceita_correcao(self):
+        with patch("pc_agv.aprendizado.servico.tem_modelo", return_value=True):
+            final = self._enviar({"mode": "ia", "speed": 0, "steering": 70, "source": "site-correcao"})
+        self.assertEqual((final["mode"], final["manual_steering"], final["last_source"]), ("ia", 70, "site-correcao"))
+
+    def test_parada_no_modo_ia_vira_penalidade(self):
+        estado.control_state["mode"] = "ia"
+        with (
+            patch("pc_agv.hardware.arduino.send_to_arduino", return_value=True),
+            patch("pc_agv.aprendizado.servico.registrar_parada") as registrar,
+        ):
+            self.client.post("/api/stop")
+        registrar.assert_called_once_with()
+        self.assertEqual(estado.control_state["mode"], "manual")
+
+    def test_parada_fora_do_modo_ia_nao_penaliza(self):
+        estado.control_state["mode"] = "auto"
+        with (
+            patch("pc_agv.hardware.arduino.send_to_arduino", return_value=True),
+            patch("pc_agv.aprendizado.servico.registrar_parada") as registrar,
+        ):
+            self.client.post("/api/stop")
+        registrar.assert_not_called()
+
+
+class TestAprendizado(_Base):
+    def setUp(self):
+        super().setUp()
+        self._banco = aprendizado_isolado()
+        self._banco.__enter__()
+
+    def tearDown(self):
+        self._banco.__exit__(None, None, None)
+        super().tearDown()
+
+    def test_status(self):
+        dados = self.client.get("/api/ia/status").get_json()
+        self.assertTrue(dados["ia"]["disponivel"])
+        self.assertFalse(dados["ia"]["tem_modelo"])
+        self.assertEqual(dados["ia"]["amostras"]["total"], 0)
+
+    def test_preferencias(self):
+        resposta = self.client.post("/api/ia/config", json={"gravando": False, "velocidade_max": 30})
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta.get_json()["preferencias"]["velocidade_max"], 30)
+        self.assertEqual(self.client.post("/api/ia/config", json={"explorar": "sim"}).status_code, 400)
+
+    def test_treinar_sem_amostras(self):
+        resposta = self.client.post("/api/ia/treinar")
+        self.assertEqual((resposta.status_code, resposta.get_json()["error"]), (409, "amostras_insuficientes"))
+
+    def test_treinar_inicia_em_segundo_plano(self):
+        with patch("pc_agv.aprendizado.servico.iniciar_treino", return_value=(True, "iniciado")):
+            resposta = self.client.post("/api/ia/treinar")
+        self.assertEqual(resposta.status_code, 202)
+
+    def test_modelos(self):
+        self.assertEqual(self.client.get("/api/ia/modelos").get_json()["modelos"], [])
+        resposta = self.client.post("/api/ia/modelos/42/ativar")
+        self.assertEqual((resposta.status_code, resposta.get_json()["error"]), (404, "modelo_inexistente"))
+
+    def test_apagar_exige_confirmacao(self):
+        self.assertEqual(self.client.post("/api/ia/apagar", json={"alvo": "tudo"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/ia/apagar", json={"alvo": "x", "confirmar": True}).status_code, 400)
+        resposta = self.client.post("/api/ia/apagar", json={"alvo": "tudo", "confirmar": True})
+        self.assertEqual(resposta.get_json(), {"ok": True, "apagado": "tudo"})
+
+    def test_banco_indisponivel_responde_503(self):
+        self._banco.__exit__(None, None, None)
+        self._banco = aprendizado_isolado(abrir=False)
+        self._banco.__enter__()
+        self.assertEqual(self.client.post("/api/ia/treinar").status_code, 503)
 
 
 class TestConfiguracoes(_Base):

@@ -27,6 +27,22 @@ def depth_segment_distance(depth_seg: np.ndarray, is_mm: bool) -> Optional[float
     return None
 
 
+def depth_to_meters(depth: np.ndarray, is_mm: bool) -> np.ndarray:
+    """Converte o quadro inteiro para metros (float32); leituras invalidas viram NaN.
+
+    Usa as mesmas faixas validas de depth_segment_distance.
+    """
+    valores = np.asarray(depth, dtype=np.float32)
+    if is_mm:
+        validos = (valores > 200) & (valores < 8000)
+        metros = valores / 1000.0
+    else:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            metros = 1.0 / (valores * -0.0030711016 + 3.3309495161)
+        validos = (valores > 100) & (valores < 2040) & (metros >= 0.15) & (metros <= 10.0)
+    return np.where(validos, metros, np.nan).astype(np.float32)
+
+
 def compute_depth_metrics(depth: np.ndarray) -> tuple[bool, Optional[float], Optional[float], Optional[float], Optional[float]]:
     if depth is None or depth.size == 0:
         return False, None, None, None, None

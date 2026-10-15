@@ -1,4 +1,4 @@
-"""Ciclo de vida das threads do agv (Kinect, ZED, rostos, autopiloto e controle)."""
+"""Ciclo de vida das threads do agv (Kinect, ZED, rostos, autopiloto, controle e aprendizado)."""
 
 import atexit
 import threading
@@ -8,6 +8,7 @@ from pc_agv.config import (
 )
 from pc_agv import controle
 from pc_agv import estado
+from pc_agv.aprendizado import servico as aprendizado
 from pc_agv.hardware import arduino, kinect, zed
 from pc_agv.visao import rostos
 
@@ -29,6 +30,7 @@ def start_runtime() -> None:
         _runtime_started = True
         estado.stop_event.clear()
         rostos.load_known_faces()
+        aprendizado.iniciar()
 
         specs = [
             ("agv-kinect", kinect.capture_loop),
@@ -36,6 +38,7 @@ def start_runtime() -> None:
             ("agv-zed", zed.capture_loop),
             ("agv-autopilot", controle.autopilot_loop),
             ("agv-control", controle.control_loop),
+            ("agv-aprendizado", aprendizado.aprendizado_loop),
         ]
         for name, target in specs:
             thread = threading.Thread(target=target, daemon=True, name=name)
@@ -59,6 +62,7 @@ def stop_runtime() -> None:
     for thread in list(_threads):
         thread.join(timeout=1.0)
     _threads.clear()
+    aprendizado.encerrar()
     log.info("Runtime agv finalizado")
 
 

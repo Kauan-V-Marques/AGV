@@ -70,5 +70,14 @@ DADOS_DIR = _pasta_de_dados()
 FACE_DB_DIR = DADOS_DIR
 FACE_UPLOADS_DIR = os.path.join(FACE_DB_DIR, "faces")
 ENCODINGS_FILE = os.path.join(FACE_DB_DIR, "encodings.pkl")
+# Auto-aprendizado (pc_agv/aprendizado): banco, ritmo da gravacao e treino automatico.
+IA_DB_FILE = os.path.join(DADOS_DIR, "aprendizado.db")
+IA_AMOSTRAS_HZ = float(os.environ.get("AGV_IA_AMOSTRAS_HZ", "5"))
+IA_MAX_AMOSTRAS = int(os.environ.get("AGV_IA_MAX_AMOSTRAS", "150000"))
+IA_MIN_AMOSTRAS = int(os.environ.get("AGV_IA_MIN_AMOSTRAS", "150"))
+# Treina sozinho a cada N amostras novas, com o AGV parado (0 = so pelo botao).
+IA_TREINO_AUTOMATICO = int(os.environ.get("AGV_IA_TREINO_AUTOMATICO", "400"))
+# No modo IA, um comando do operador vale como correcao por este tempo.
+IA_CORRECAO_JANELA_S = float(os.environ.get("AGV_IA_CORRECAO_JANELA_S", "1.0"))
 # Tamanho maximo de upload (foto de rosto); acima disso a API responde 413.
 MAX_UPLOAD_MB = float(os.environ.get("AGV_MAX_UPLOAD_MB", "10"))

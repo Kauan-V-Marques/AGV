@@ -280,6 +280,7 @@ def capture_loop() -> None:
                 with estado.state_lock:
                     estado.state["depth"] = depth_array
                     estado.state["depth_mm"] = is_mm
+                    estado.state["depth_at"] = util.now()
                     estado.state["distance_m"] = distance
                     estado.state["left_clearance_m"] = left
                     estado.state["center_clearance_m"] = center
