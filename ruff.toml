@@ -1,0 +1,13 @@
+# Lint do projeto (roda no CI): so regras que apontam erros reais, sem impor estilo.
+target-version = "py311"
+line-length = 120
+
+[lint]
+# E4/E7/E9: erros de import, comandos e sintaxe; F: pyflakes; B: armadilhas comuns (bugbear)
+select = ["E4", "E7", "E9", "F", "B"]
+# zip() sem strict=: as listas comparadas vem do mesmo detector e tem sempre o mesmo tamanho
+ignore = ["B905"]
+
+[lint.per-file-ignores]
+# o launcher troca para a .venv do projeto antes de importar o pc_agv
+"launch_production.py" = ["E402"]

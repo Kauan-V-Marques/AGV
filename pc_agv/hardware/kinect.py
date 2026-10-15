@@ -125,7 +125,7 @@ def get_kinect_stabilization() -> bool:
 
 def _do_tilt_body(dev) -> None:
     """Ajusta o tilt do Kinect para manter o frame mais nivelado."""
-    global _tilt_last_set_at, _tilt_last_target, _tilt_manual_until, _tilt_manual_target, _tilt_pitch_filtered
+    global _tilt_last_set_at, _tilt_last_target, _tilt_pitch_filtered
 
     stabilization_enabled = get_kinect_stabilization()
     # Mesmo com estabilizacao OFF, respeita comando manual recente de tilt.
