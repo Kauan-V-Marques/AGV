@@ -1,3 +1,4 @@
+import io
 import unittest
 from unittest.mock import patch
 
@@ -119,6 +120,21 @@ class TestConfiguracoes(_Base):
 
 
 class TestKinect(_Base):
+    def test_tilt_valido(self):
+        with patch("pc_agv.hardware.kinect.command_kinect_tilt", return_value=(True, "ok", 12.0)) as tilt:
+            resposta = self.client.post("/api/kinect/tilt", json={"angle": "12"})
+        self.assertEqual(resposta.status_code, 200)
+        tilt.assert_called_once_with(12.0)
+
+    def test_tilt_invalido_responde_400(self):
+        with patch("pc_agv.hardware.kinect.command_kinect_tilt") as tilt:
+            for angulo in ("abc", None, [1], "nan", "inf"):
+                with self.subTest(angulo=angulo):
+                    resposta = self.client.post("/api/kinect/tilt", json={"angle": angulo})
+                    self.assertEqual(resposta.status_code, 400)
+                    self.assertEqual(resposta.get_json()["error"], "invalid_angle")
+        tilt.assert_not_called()
+
     def test_reconectar(self):
         with patch("pc_agv.hardware.kinect.request_reconnect") as reconectar:
             dados = self.client.post("/api/kinect/reconnect").get_json()
@@ -147,6 +163,19 @@ class TestRostos(_Base):
     def test_cadastro_sem_nome(self):
         resposta = self.client.post("/api/face/register_face", data={"name": ""})
         self.assertEqual((resposta.status_code, resposta.get_json()["error"]), (400, "name_required"))
+
+    def test_upload_grande_demais_responde_413(self):
+        arquivo = (io.BytesIO(b"x" * 4096), "foto.jpg")
+        with patch.dict(rotas.app.config, {"MAX_CONTENT_LENGTH": 1024}), \
+                patch("pc_agv.visao.rostos.register_face") as cadastrar:
+            resposta = self.client.post("/api/face/register_face", data={"name": "Ana", "image": arquivo},
+                                        content_type="multipart/form-data")
+        self.assertEqual(resposta.status_code, 413)
+        self.assertEqual(resposta.get_json()["error"], "file_too_large")
+        cadastrar.assert_not_called()
+
+    def test_limite_padrao_de_upload(self):
+        self.assertEqual(rotas.app.config["MAX_CONTENT_LENGTH"], int(rotas.MAX_UPLOAD_MB * 1024 * 1024))
 
 
 if __name__ == "__main__":

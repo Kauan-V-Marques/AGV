@@ -55,3 +55,5 @@ FACE_SCAN_MAX_WIDTH = int(os.environ.get("AGV_FACE_SCAN_MAX_WIDTH", "640"))
 FACE_DB_DIR = os.path.join(PROJECT_ROOT, "logs")
 FACE_UPLOADS_DIR = os.path.join(FACE_DB_DIR, "faces")
 ENCODINGS_FILE = os.path.join(FACE_DB_DIR, "encodings.pkl")
+# Tamanho maximo de upload (foto de rosto); acima disso a API responde 413.
+MAX_UPLOAD_MB = float(os.environ.get("AGV_MAX_UPLOAD_MB", "10"))

@@ -1,5 +1,6 @@
 """Aplicacao Flask: painel, streams MJPEG e API REST do agv."""
 
+import math
 import os
 import socket
 
@@ -8,6 +9,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 from pc_agv.config import (
     DEFAULT_PORT,
     DEPTH_FPS,
+    MAX_UPLOAD_MB,
     VIDEO_FPS,
     ZED_FPS,
 )
@@ -25,6 +27,13 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 # Sempre revalida painel.css/painel.js para nao servir versao antiga apos atualizar o agv.
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+# Evita que um upload enorme esgote a memoria do notebook do agv.
+app.config["MAX_CONTENT_LENGTH"] = int(MAX_UPLOAD_MB * 1024 * 1024)
+
+
+@app.errorhandler(413)
+def route_file_too_large(_error):
+    return jsonify({"ok": False, "error": "file_too_large", "max_mb": MAX_UPLOAD_MB}), 413
 
 
 
@@ -122,7 +131,12 @@ def route_kinect_reconnect():
 @app.route("/api/kinect/tilt", methods=["POST"])
 def route_kinect_tilt():
     payload = request.get_json(silent=True) or {}
-    angle = float(payload.get("angle", 0.0))
+    try:
+        angle = float(payload.get("angle", 0.0))
+    except (TypeError, ValueError):
+        angle = math.nan
+    if not math.isfinite(angle):
+        return jsonify({"ok": False, "error": "invalid_angle"}), 400
     ok, message, applied = kinect.command_kinect_tilt(angle)
     return jsonify({"ok": ok, "message": message, "tilt_target_deg": applied})
 
