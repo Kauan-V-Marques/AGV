@@ -27,6 +27,24 @@ curl -fsSL "https://github.com/OpenKinect/libfreenect/archive/refs/tags/${VERSAO
 echo ">> compilando o wrapper Python com ${PYTHON}"
 "$PYTHON" -m pip install "${PIP_EXTRA[@]}" "cython>=3" "setuptools<81"
 cd "$TMP/libfreenect-${VERSAO#v}/wrappers/python"
+
+# O setup.py original detecta a versao do Cython por atributos internos que nao
+# existem mais no Cython 3.1+. Este setup.py faz a mesma compilacao (freenect.pyx
+# ligado a libusb, libfreenect e libfreenect_sync) usando so a API publica.
+cat > setup.py <<'SETUP'
+import numpy as np
+from Cython.Build import cythonize
+from setuptools import Extension, setup
+
+extensao = Extension(
+    "freenect",
+    ["freenect.pyx"],
+    libraries=["usb-1.0", "freenect", "freenect_sync"],
+    include_dirs=["../../include", "../c_sync", "/usr/include/libusb-1.0", np.get_include()],
+)
+setup(name="freenect", version="0.7.5", ext_modules=cythonize([extensao]))
+SETUP
+
 "$PYTHON" -m pip install "${PIP_EXTRA[@]}" --no-build-isolation .
 
 echo ">> verificando"
