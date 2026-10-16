@@ -2,6 +2,12 @@
 
 Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v1.0.2`, `v1.0.3`, `v1.0.4`, `v1.1.0` e `v1.1.1`).
 
+## [Não lançado]
+
+### Documentação
+
+- Cronograma técnico com as datas previstas de cada etapa e os responsáveis, iguais aos do quadro de tarefas (revisão de 16/10/2026).
+
 ## [1.1.1] — 2026-10-16 — Alinhamento ao artigo V2
 
 ### Documentação
