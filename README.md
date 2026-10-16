@@ -60,7 +60,7 @@
 | **Equipe** | AGV |
 | **Curso** | Engenharia de Computação |
 | **Disciplina** | UPX — Realidade Aumentada |
-| **Professor** | Prof. Daniel Ohata |
+| **Professor** | Prof. Dr. Daniel Ohata |
 | **Instituição** | Centro Universitário Facens — Sorocaba/SP |
 | **Semestre** | 2026.2 |
 
@@ -68,11 +68,11 @@
 
 | Nome | RA | Responsabilidade |
 |---|---|---|
-| Jorge Henrique Gobbo Berenschot | 235317 | Scrum Master: organização das sprints e acompanhamento das entregas |
-| Kauan Victor Marques | 235003 | Interface (painel web e HUD de telemetria), servidor e integração com o hardware, testes, documentação e coordenação |
-| Pedro Henrique Santana de Oliveira | 23705 | Documentação |
-| Gabriel Pelincel Ramalho | 222434 | Codificação e organização do projeto |
-| Felipe Matias de Jesus | 226705 | Documentação |
+| Jorge Henrique Gobbo Berenschot | 235317 | Scrum Master (organização das sprints e acompanhamento das entregas); qualidade e experimento: validação, testes, protocolo experimental e atas |
+| Kauan Victor Marques | 235003 | Líder da equipe e líder técnico: servidor e integração com o hardware (Kinect, Flask e Arduino), painel web e HUD, sobreposições de RA, testes e documentação técnica |
+| Pedro Henrique Santana de Oliveira | 23705 | Hardware e eletrônica (Arduino, chassi e percurso experimental) e documentação |
+| Gabriel Pelincel Ramalho | 222434 | Codificação e organização do projeto (refatoração, Docker e Trello) e documentação científica: artigo, planilha de artigos e referências |
+| Felipe Matias de Jesus | 226705 | Interface e comunicação: front-end das sobreposições, pitch e slides; documentação |
 
 ---
 
@@ -132,7 +132,9 @@ Desenvolver e avaliar uma interface de teleoperação baseada em Realidade Aumen
 | Registrar sobre o vídeo o contorno e a distância dos obstáculos | Sobreposição acompanha o obstáculo no vídeo | ⬜ |
 | Projetar uma zona de segurança no piso do vídeo | Faixa no piso muda de cor conforme a distância | ⬜ |
 | Registrar métricas de experimento (tempo, colisões, RTT, FPS) | Arquivo de log por sessão de teste | ⬜ |
-| Avaliar com operadores (SUS e NASA-TLX), HUD × HUD + RA | Dados coletados e analisados | ⬜ |
+| Mostrar um aviso quando a frente não tiver leitura válida (zona não medida) | Aviso no vídeo em vez de omitir a informação | ⬜ |
+| Verificar tecnicamente a precisão e a estabilidade do registro | Erro de registro ≤ 10 px e IoU ≥ 0,7; erro de distância ≤ 5% até 2,5 m; desvio ≤ 3 px parado; persistência ≥ 95%; queda de FPS < 10% | ⬜ |
+| Avaliar com operadores (SUS e NASA-TLX), HUD × HUD + RA | 20 operadores, desenho intrassujeitos contrabalanceado; dados coletados e analisados | ⬜ |
 
 ### 4.3 Questões de pesquisa
 
@@ -141,17 +143,17 @@ Desenvolver e avaliar uma interface de teleoperação baseada em Realidade Aumen
 
 ### 4.4 Etapas da pesquisa
 
-A pesquisa é aplicada, predominantemente explicativa e de abordagem mista: mede o desempenho e a percepção dos operadores e complementa com observações e relatos.
+A pesquisa é aplicada, predominantemente explicativa e de abordagem mista: mede o desempenho e a percepção dos operadores e complementa com observação e entrevista. As etapas seguem os objetivos específicos do artigo (versão 2, de 14/10/2026):
 
-1. Levantar e comparar trabalhos que empregam RA e interfaces espaciais na teleoperação de robôs móveis.
-2. Identificar os requisitos das sobreposições: quais informações serão apresentadas e como serão registradas sobre o vídeo a partir do mapa de profundidade.
-3. Desenvolver uma prova de conceito das sobreposições integrada ao servidor de teleoperação existente.
-4. Evoluir a prova de conceito para um protótipo experimental estável.
-5. Estabelecer o procedimento de avaliação: tarefa, cenário, condições comparadas e instrumentos.
-6. Coletar dados de desempenho (tempo, colisões, intervenções, latência e taxa de quadros) e de percepção (SUS e NASA-TLX) com operadores.
-7. Analisar os resultados e confrontá-los com as hipóteses.
+1. Comparar trabalhos que empregam RA e interfaces espaciais na teleoperação de robôs móveis.
+2. Definir os requisitos das sobreposições e o método de registro a partir do mapa de profundidade.
+3. Desenvolver o protótipo integrado ao servidor de teleoperação existente.
+4. Verificar tecnicamente a precisão e a estabilidade do registro, com critérios de aceitação definidos antes do estudo com usuários.
+5. Submeter o protocolo ao Comitê de Ética em Pesquisa e realizar um estudo piloto com dois participantes externos à amostra.
+6. Conduzir o experimento com 20 operadores não especialistas, em desenho intrassujeitos: cada um usa as duas interfaces (HUD fixo e HUD + RA), com a ordem e os dois percursos equivalentes contrabalanceados.
+7. Analisar os resultados à luz das hipóteses.
 
-Hipóteses, variáveis, ODS e trabalhos relacionados: [docs/documents/pesquisa-artigo.md](docs/documents/pesquisa-artigo.md).
+Hipóteses, variáveis, desenho experimental, avaliação técnica, ODS e trabalhos relacionados: [docs/documents/pesquisa-artigo.md](docs/documents/pesquisa-artigo.md).
 
 ---
 
@@ -162,7 +164,7 @@ Hipóteses, variáveis, ODS e trabalhos relacionados: [docs/documents/pesquisa-a
 | **Perfil** | Operadores de intralogística e técnicos que precisam intervir remotamente em um AGV; nos experimentos da pesquisa, **operadores não especialistas** |
 | **Contexto de uso** | Corredores de armazém ou laboratório, com o AGV em situação de exceção (obstáculo, área não mapeada, parada de segurança) |
 | **Necessidades** | Estimar distâncias, perceber obstáculos e antecipar colisões olhando apenas para a tela |
-| **Outros interessados** | Pesquisadores e projetistas de sistemas de interação humano-robô; pequenas e médias empresas que buscam automação industrial acessível |
+| **Outros interessados** | Pesquisadores e projetistas de sistemas de interação humano-robô; pequenas e médias empresas que buscam automação industrial acessível; laboratórios e cursos de robótica que usam plataformas de baixo custo |
 | **Limitações** | Sem acesso visual direto ao AGV; dependem da qualidade do vídeo e da rede Wi-Fi |
 | **Familiaridade tecnológica** | Básica: a interface usa navegador comum, teclado (WASD/setas) ou toque, sem instalar nada |
 
@@ -210,8 +212,9 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | RF34 | Distância ancorada (RA registrada) | Mostrar a distância junto ao obstáculo, acompanhando-o no vídeo | ⬜ |
 | RF35 | Zona de segurança (RA registrada) | Faixa projetada no piso do vídeo indicando a área de risco à frente do AGV | ⬜ |
 | RF36 | Alinhamento RGB × profundidade | Registrar o mapa de profundidade na imagem RGB (pré-requisito de RF33–RF35) | ⬜ |
-| RF37 | Registro do experimento | Gravar tempo, colisões, intervenções, RTT e FPS de cada sessão | ⬜ |
-| RF38 | Alternância de condição | Ligar/desligar as sobreposições para comparar HUD × HUD + RA | ⬜ |
+| RF37 | Registro do experimento | Gravar tempo, colisões, intervenções, RTT e FPS de cada sessão, com as paradas por falha técnica (perda de vídeo, watchdog, queda de comunicação) registradas à parte | ⬜ |
+| RF38 | Alternância de condição | Ligar/desligar as sobreposições para comparar HUD × HUD + RA, com o mesmo processamento no servidor nas duas condições | ⬜ |
+| RF39 | Aviso de zona não medida | Quando a região à frente não tiver leitura válida (abaixo do alcance mínimo do Kinect), mostrar um aviso no vídeo em vez de omitir a informação | ⬜ |
 
 **Legenda:** ✅ Implementado · 🚧 Em desenvolvimento · ⬜ Planejado · ❌ Cancelado
 
@@ -1459,7 +1462,7 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 - **As sobreposições registradas de obstáculos ainda não existem.** O HUD atual mostra números fixos na tela; contorno, distância ancorada e zona de segurança são o próximo passo (RF33–RF35).
 - **Profundidade e RGB não estão alinhados entre si.** O Kinect v1 tem as duas câmeras deslocadas, e o código ainda não registra uma sobre a outra; isso é pré-requisito para desenhar sobre o obstáculo no vídeo.
 - **Faixa de medição limitada:** só a faixa central (35–65% da altura) é medida. Obstáculos baixos (paletes no chão) ou altos podem não aparecer nas distâncias.
-- **Precisão do Kinect v1 cai com a distância** (Wasenmüller e Stricker, 2016), e ele não mede bem a poucos centímetros nem sob luz solar forte.
+- **Precisão do Kinect v1 cai com a distância** (Wasenmüller e Stricker, 2017), e o alcance útil vai de cerca de 0,8 m a 4 m: objetos muito próximos ficam sem leitura, e luz solar forte atrapalha a medição. Os limiares de 0,35 m e 0,60 m do modo autônomo e da IA ficam abaixo desse alcance e precisam ser conferidos no AGV real (seção 22.4); nas sobreposições, a falta de leitura vai virar um aviso de zona não medida (RF39).
 - **Vídeo com baixa taxa de quadros** (6 fps RGB, 4 fps profundidade por padrão) para caber em redes fracas, o que aumenta a latência percebida.
 - **O modo autônomo é reativo e simples:** regras por limiar, sem planejamento de trajetória; o mapa existe, mas ainda não é usado para navegar.
 - **A IA só enxerga a profundidade à frente:** a entrada são 48 números tirados de uma miniatura 24×32; não usa a câmera RGB nem a ZED, e não sabe o que há atrás do AGV (por isso a ré da IA é limitada a 30%). Aprende só o que o operador demonstrou.
@@ -1517,8 +1520,12 @@ timeline
     14 de outubro : Limpeza e correções : README no modelo da disciplina : Modularização do código
     15 de outubro : Testes automatizados e CI : Painel novo com menu lateral : Auto-aprendizado
     16 de outubro : Página Aprendizado : Auto-mapeamento e página Mapa
-    Próximos passos : Validar IA e mapa no AGV real : Sobreposições de RA registradas : Experimento com operadores
+    outubro (previsto) : Validar IA e mapa no AGV real : Protótipo das sobreposições de RA : Comitê de Ética e estudo piloto
+    novembro (previsto) : Avaliação técnica das sobreposições : Coleta com 20 operadores
+    dezembro (previsto) : Artigo final : Apresentação final
 ```
+
+Os meses previstos vêm do planejamento inicial da apresentação do projeto (setembro/2026); a avaliação técnica e o Comitê de Ética entraram com a versão 2 do artigo.
 
 | Atividade | Período | Responsável | Status |
 |---|---|---|---|
@@ -1527,18 +1534,23 @@ timeline
 | Migração da Raspberry Pi 5 (queimada) para notebook Linux embarcado | 2026 | Equipe | ✅ |
 | Firmware do Arduino reorganizado (v1.0.4) | jul/2026 | Kauan, Gabriel | ✅ |
 | Docker, organização do repositório e HUD em tela cheia | ago/2026 | Kauan | ✅ |
-| Fundamentação teórica e artigo (introdução e trabalhos relacionados) | 2026.2 | Equipe (documentação: Pedro e Felipe) | ✅ |
+| Artigo V1, planilha de artigos e fundamentação teórica | set/2026 | Equipe (artigo: Gabriel; documentação: Pedro e Felipe) | ✅ |
+| Apresentação do projeto (pitch) | set/2026 | Equipe (slides: Felipe) | ✅ |
+| Artigo V2: desenho experimental e avaliação técnica, conforme o feedback do professor | out/2026 | Equipe (artigo: Gabriel) | ✅ |
 | Documentação técnica no padrão da disciplina | out/2026 | Equipe | ✅ |
 | Modularização, testes automatizados (225) e CI | out/2026 | Kauan | ✅ |
 | Painel novo organizado em seções (menu lateral) | out/2026 | Kauan | ✅ |
 | Auto-aprendizado (imitação e recompensa) com banco SQLite | out/2026 | Kauan | ✅ |
 | Auto-mapeamento (odometria visual e mapa de ocupação) | out/2026 | Kauan | ✅ |
 | Validação da IA e do mapeamento no AGV real | 2026.2 | Equipe | ⬜ |
-| Requisitos das sobreposições de RA | 2026.2 | Equipe | 🚧 |
-| Alinhamento RGB × profundidade e prova de conceito das sobreposições | — | Kauan, Gabriel | ⬜ |
-| Protótipo experimental estável + registro de métricas | — | Kauan, Gabriel | ⬜ |
-| Experimento com operadores (SUS e NASA-TLX) | — | Equipe | ⬜ |
-| Análise dos resultados e versão final do artigo | — | Equipe | ⬜ |
+| Requisitos das sobreposições de RA | out/2026 | Equipe | 🚧 |
+| Alinhamento RGB × profundidade e prova de conceito das sobreposições | out/2026 (previsto) | Kauan, Felipe | ⬜ |
+| Protótipo experimental estável + registro de métricas | out/2026 (previsto) | Kauan, Felipe | ⬜ |
+| Protocolo, Comitê de Ética, percursos e estudo piloto | out/2026 (previsto) | Jorge, Pedro | ⬜ |
+| Avaliação técnica das sobreposições (antes do estudo com usuários) | nov/2026 (previsto) | Kauan, Jorge | ⬜ |
+| Experimento com operadores (SUS e NASA-TLX) | nov/2026 (previsto) | Jorge e Equipe | ⬜ |
+| Análise dos resultados e versão final do artigo | nov–dez/2026 (previsto) | Gabriel e Equipe | ⬜ |
+| Apresentação final | dez/2026 (previsto) | Equipe | ⬜ |
 
 As tarefas e as sprints são organizadas pelo Scrum Master num quadro do Trello da equipe (privado; o acesso é por convite). Este cronograma resume o estado do quadro e do código no momento da entrega.
 
@@ -1603,10 +1615,14 @@ gitGraph
     commit id: "revisão da documentação"
     checkout main
     merge docs/revisao-entrega id: "entrega UPX" tag: "v1.1.0"
+    branch docs/alinhamento-artigo-v2
+    commit id: "alinha ao artigo V2"
+    checkout main
+    merge docs/alinhamento-artigo-v2 id: "artigo V2" tag: "v1.1.1"
 ```
 
 - **Integração contínua:** o GitHub Actions roda lint, testes (cobertura mínima de 80%), build da imagem Docker e do executável a cada push e pull request; o selo no topo do README mostra o resultado da `main`.
-- **Tags:** `v1.0.2`, `v1.0.3` e `v1.0.4` marcam as versões do início do projeto; `v1.1.0` marca a entrega da documentação técnica, com o painel novo, o auto-aprendizado e o auto-mapeamento. O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). Veja as [tags](https://github.com/Kauan-V-Marques/AGV/tags) e o [histórico completo](https://github.com/Kauan-V-Marques/AGV/commits/main).
+- **Tags:** `v1.0.2`, `v1.0.3` e `v1.0.4` marcam as versões do início do projeto; `v1.1.0` marca a entrega da documentação técnica, com o painel novo, o auto-aprendizado e o auto-mapeamento; `v1.1.1` alinha a documentação à versão 2 do artigo e à apresentação do projeto. O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). Veja as [tags](https://github.com/Kauan-V-Marques/AGV/tags) e o [histórico completo](https://github.com/Kauan-V-Marques/AGV/commits/main).
 
 ---
 
@@ -1729,9 +1745,10 @@ gitGraph
 
 ### Problema 20 — Vista tapada fazia o mapa perder a orientação
 
-**Problema:** passando perto de um objeto (abaixo dos 0,5 m que o Kinect mede), a odometria falhava por alguns quadros; o AGV continuava girando, mas a pose ficava parada, e depois disso não havia como reencontrar a vista.
+**Problema:** passando perto de um objeto (abaixo dos 0,5 m em que a varredura do mapa começa), a odometria falhava por alguns quadros; o AGV continuava girando, mas a pose ficava parada, e depois disso não havia como reencontrar a vista.
 **Causa:** sem casamento, a pose congelava.
 **Solução:** com o AGV recebendo comando de movimento, a pose segue pelo último movimento medido (velocidade constante) até a vista voltar; parado, fica onde está. Saltos impossíveis entre dois quadros (mais de 30 cm ou 30°) são recusados.
+
 ---
 
 ## 30. Melhorias Futuras
@@ -1769,13 +1786,13 @@ Projeto acadêmico desenvolvido na disciplina UPX — Realidade Aumentada do Cen
 
 ## 33. Autores
 
-- **Jorge Henrique Gobbo Berenschot** (RA 235317): Scrum Master
-- **Kauan Victor Marques** (RA 235003): interface (painel web/HUD), servidor e integração do hardware, testes, documentação e coordenação · [GitHub](https://github.com/Kauan-V-Marques)
-- **Pedro Henrique Santana de Oliveira** (RA 23705): documentação
-- **Gabriel Pelincel Ramalho** (RA 222434): codificação e organização do projeto · [GitHub](https://github.com/gpelincel)
-- **Felipe Matias de Jesus** (RA 226705): documentação
+- **Jorge Henrique Gobbo Berenschot** (RA 235317): Scrum Master; qualidade e experimento
+- **Kauan Victor Marques** (RA 235003): líder da equipe e líder técnico: servidor e integração do hardware, painel web e HUD, sobreposições de RA, testes e documentação técnica · [GitHub](https://github.com/Kauan-V-Marques)
+- **Pedro Henrique Santana de Oliveira** (RA 23705): hardware e eletrônica; documentação
+- **Gabriel Pelincel Ramalho** (RA 222434): codificação e organização do projeto; artigo e referências · [GitHub](https://github.com/gpelincel)
+- **Felipe Matias de Jesus** (RA 226705): interface e comunicação (front-end das sobreposições, pitch e slides); documentação
 
-**Orientação:** Prof. Daniel Ohata
+**Orientação:** Prof. Dr. Daniel Ohata
 **Instituição:** Centro Universitário Facens
 **Disciplina:** UPX — Realidade Aumentada
 **Semestre:** 2026.2
