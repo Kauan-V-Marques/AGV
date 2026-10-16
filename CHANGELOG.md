@@ -1,8 +1,8 @@
 # Changelog
 
-Todas as mudanças relevantes do projeto. Os marcos `v1.0.x` foram registrados nas mensagens de commit.
+Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v1.0.2`, `v1.0.3`, `v1.0.4` e `v1.1.0`).
 
-## [Não lançado]
+## [1.1.0] — 2026-10-16 — Entrega da documentação técnica
 
 ### Adicionado
 

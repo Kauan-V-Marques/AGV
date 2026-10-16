@@ -1498,6 +1498,7 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 | Síntese do artigo | [docs/documents/pesquisa-artigo.md](docs/documents/pesquisa-artigo.md) |
 | Modelo de documentação da disciplina | [github.com/dr-ohata/upx-modelo](https://github.com/dr-ohata/upx-modelo) |
 | Driver do Kinect v1 | [github.com/OpenKinect/libfreenect](https://github.com/OpenKinect/libfreenect) |
+| Quadro de tarefas e sprints | Trello da equipe (privado; acesso por convite) |
 | Vídeo de demonstração | ⚠️ PREENCHER |
 
 ---
@@ -1539,6 +1540,8 @@ timeline
 | Experimento com operadores (SUS e NASA-TLX) | — | Equipe | ⬜ |
 | Análise dos resultados e versão final do artigo | — | Equipe | ⬜ |
 
+As tarefas e as sprints são organizadas pelo Scrum Master num quadro do Trello da equipe (privado; o acesso é por convite). Este cronograma resume o estado do quadro e do código no momento da entrega.
+
 ---
 
 ## 28. Controle de Versão
@@ -1554,14 +1557,15 @@ ci: testes, lint, imagem Docker e executavel no GitHub Actions
 docs: reescreve README no modelo da disciplina UPX e cria pasta docs/
 ```
 
-Principais branches e a ordem em que entraram na `main` (os marcos v1.0.x foram commits diretos):
+Principais branches, tags e a ordem em que entraram na `main` (os marcos v1.0.x foram commits diretos):
 
 ```mermaid
 gitGraph
     commit id: "upload inicial"
-    commit id: "v1.0.2"
-    commit id: "v1.0.3"
-    commit id: "v1.0.4 + ré"
+    commit id: "agv v1.0.2" tag: "v1.0.2"
+    commit id: "agv v1.0.3" tag: "v1.0.3"
+    commit id: "agv v1.0.4" tag: "v1.0.4"
+    commit id: "ré"
     branch feature/hud-fullscreen-viewer
     commit id: "HUD em tela cheia"
     checkout main
@@ -1598,11 +1602,11 @@ gitGraph
     branch docs/revisao-entrega
     commit id: "revisão da documentação"
     checkout main
-    merge docs/revisao-entrega id: "entrega UPX"
+    merge docs/revisao-entrega id: "entrega UPX" tag: "v1.1.0"
 ```
 
 - **Integração contínua:** o GitHub Actions roda lint, testes (cobertura mínima de 80%), build da imagem Docker e do executável a cada push e pull request; o selo no topo do README mostra o resultado da `main`.
-- **Marcos de versão:** `v1.0.2`, `v1.0.3` e `v1.0.4` estão registrados nos commits; o histórico de cada versão está no [CHANGELOG.md](CHANGELOG.md). Veja o [histórico completo](https://github.com/Kauan-V-Marques/AGV/commits/main).
+- **Tags:** `v1.0.2`, `v1.0.3` e `v1.0.4` marcam as versões do início do projeto; `v1.1.0` marca a entrega da documentação técnica, com o painel novo, o auto-aprendizado e o auto-mapeamento. O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). Veja as [tags](https://github.com/Kauan-V-Marques/AGV/tags) e o [histórico completo](https://github.com/Kauan-V-Marques/AGV/commits/main).
 
 ---
 
