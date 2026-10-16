@@ -12,17 +12,14 @@ from typing import Any, Optional
 
 import numpy as np
 
+from pc_agv import sqlite_util
 from pc_agv.aprendizado import entrada
 
 
 VERSAO_ESQUEMA = 1
 MODELOS_GUARDADOS = 10
 
-ESQUEMA = """
-CREATE TABLE IF NOT EXISTS meta (
-    chave TEXT PRIMARY KEY,
-    valor TEXT NOT NULL
-);
+ESQUEMA = sqlite_util.ESQUEMA_META + """
 CREATE TABLE IF NOT EXISTS sessoes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     iniciada_em REAL NOT NULL,
@@ -55,20 +52,9 @@ class BancoAprendizado:
     def __init__(self, caminho: str):
         self.caminho = caminho
         self._lock = threading.Lock()
-        self._con = sqlite3.connect(caminho, check_same_thread=False, timeout=10.0)
-        self._con.row_factory = sqlite3.Row
+        # Arquivo corrompido gera erro aqui e o servico desliga o aprendizado sem apaga-lo.
+        self._con = sqlite_util.conectar(caminho)
         with self._lock:
-            # Confere a integridade antes de escrever qualquer coisa: um arquivo
-            # corrompido gera erro aqui e o servico desliga o aprendizado sem apaga-lo.
-            self._con.execute("PRAGMA schema_version").fetchone()
-            try:
-                self._con.execute("PRAGMA journal_mode=WAL")
-                # Com WAL, NORMAL nunca corrompe o banco; numa queda de energia perde no
-                # maximo as ultimas amostras, e poupa uma escrita no disco por amostra.
-                self._con.execute("PRAGMA synchronous=NORMAL")
-            except sqlite3.DatabaseError:
-                pass  # sistema de arquivos sem suporte a WAL: segue no modo padrao
-            self._con.execute("PRAGMA foreign_keys=ON")
             with self._con:
                 self._con.executescript(ESQUEMA)
                 self._con.execute(
@@ -83,21 +69,11 @@ class BancoAprendizado:
     # ── Preferencias ────────────────────────────────────────────────
     def ler_preferencia(self, chave: str, padrao: Any) -> Any:
         with self._lock:
-            linha = self._con.execute("SELECT valor FROM meta WHERE chave = ?", (f"pref.{chave}",)).fetchone()
-        if linha is None:
-            return padrao
-        try:
-            return json.loads(linha["valor"])
-        except ValueError:
-            return padrao
+            return sqlite_util.ler_preferencia(self._con, chave, padrao)
 
     def gravar_preferencia(self, chave: str, valor: Any) -> None:
-        with self._lock, self._con:
-            self._con.execute(
-                "INSERT INTO meta (chave, valor) VALUES (?, ?) "
-                "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor",
-                (f"pref.{chave}", json.dumps(valor)),
-            )
+        with self._lock:
+            sqlite_util.gravar_preferencia(self._con, chave, valor)
 
     # ── Amostras ────────────────────────────────────────────────────
     def nova_sessao(self, modo: str, iniciada_em: Optional[float] = None) -> int:
