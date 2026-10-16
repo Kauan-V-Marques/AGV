@@ -1520,12 +1520,12 @@ timeline
     14 de outubro : Limpeza e correções : README no modelo da disciplina : Modularização do código
     15 de outubro : Testes automatizados e CI : Painel novo com menu lateral : Auto-aprendizado
     16 de outubro : Página Aprendizado : Auto-mapeamento e página Mapa
-    outubro (previsto) : Validar IA e mapa no AGV real : Protótipo das sobreposições de RA : Comitê de Ética e estudo piloto
-    novembro (previsto) : Avaliação técnica das sobreposições : Coleta com 20 operadores
-    dezembro (previsto) : Artigo final : Apresentação final
+    fim de outubro (previsto) : Testes com o AGV real e evidências (até 30/10) : Alinhamento RGB × profundidade (até 30/10) : Protocolo e Comitê de Ética
+    novembro (previsto) : Sobreposições de RA e métricas (até 13/11) : Avaliação técnica (16 a 20/11) : Coleta com 20 operadores (a partir de 23/11)
+    dezembro (previsto) : Fim da coleta (04/12) : Artigo final e apresentação final (até 11/12)
 ```
 
-Os meses previstos vêm do planejamento inicial da apresentação do projeto (setembro/2026); a avaliação técnica e o Comitê de Ética entraram com a versão 2 do artigo.
+As datas previstas foram revistas em 16/10/2026 a partir do planejamento inicial da apresentação do projeto (setembro/2026) e são as mesmas do quadro de tarefas; a avaliação técnica e o Comitê de Ética entraram com a versão 2 do artigo.
 
 | Atividade | Período | Responsável | Status |
 |---|---|---|---|
@@ -1542,17 +1542,18 @@ Os meses previstos vêm do planejamento inicial da apresentação do projeto (se
 | Painel novo organizado em seções (menu lateral) | out/2026 | Kauan | ✅ |
 | Auto-aprendizado (imitação e recompensa) com banco SQLite | out/2026 | Kauan | ✅ |
 | Auto-mapeamento (odometria visual e mapa de ocupação) | out/2026 | Kauan | ✅ |
-| Validação da IA e do mapeamento no AGV real | 2026.2 | Equipe | ⬜ |
 | Requisitos das sobreposições de RA | out/2026 | Equipe | 🚧 |
-| Alinhamento RGB × profundidade e prova de conceito das sobreposições | out/2026 (previsto) | Kauan, Felipe | ⬜ |
-| Protótipo experimental estável + registro de métricas | out/2026 (previsto) | Kauan, Felipe | ⬜ |
-| Protocolo, Comitê de Ética, percursos e estudo piloto | out/2026 (previsto) | Jorge, Pedro | ⬜ |
-| Avaliação técnica das sobreposições (antes do estudo com usuários) | nov/2026 (previsto) | Kauan, Jorge | ⬜ |
-| Experimento com operadores (SUS e NASA-TLX) | nov/2026 (previsto) | Jorge e Equipe | ⬜ |
-| Análise dos resultados e versão final do artigo | nov–dez/2026 (previsto) | Gabriel e Equipe | ⬜ |
-| Apresentação final | dez/2026 (previsto) | Equipe | ⬜ |
+| Dados de hardware no README | 19 a 23/10 (previsto) | Pedro | ⬜ |
+| Testes com o AGV real, incluindo a IA e o mapeamento | 19 a 28/10 (previsto) | Jorge, Pedro, Kauan | ⬜ |
+| Evidências de funcionamento (foto, captura do HUD real e vídeo) | 26 a 30/10 (previsto) | Felipe, Pedro | ⬜ |
+| Alinhamento RGB × profundidade do Kinect | 19 a 30/10 (previsto) | Kauan | ⬜ |
+| Protocolo, Comitê de Ética, percursos e estudo piloto | a partir de 19/10 (previsto) | Jorge, Pedro | ⬜ |
+| Sobreposições de RA e registro de métricas (protótipo experimental) | 26/10 a 13/11 (previsto) | Kauan, Felipe | ⬜ |
+| Avaliação técnica das sobreposições (antes do estudo com usuários) | 16 a 20/11 (previsto) | Jorge, Kauan | ⬜ |
+| Coleta com os operadores (SUS e NASA-TLX) | 23/11 a 04/12 (previsto) | Jorge, Pedro e Equipe | ⬜ |
+| Análise dos resultados, versão final do artigo e apresentação final | 23/11 a 11/12 (previsto) | Gabriel, Felipe e Equipe | ⬜ |
 
-As tarefas e as sprints são organizadas pelo Scrum Master num quadro do Trello da equipe (privado; o acesso é por convite). Este cronograma resume o estado do quadro e do código no momento da entrega.
+As tarefas e as sprints são organizadas pelo Scrum Master num quadro do Trello da equipe (privado; o acesso é por convite), e as datas previstas acima são as mesmas dos cards do quadro. A coleta depende da aprovação do Comitê de Ética, por isso o protocolo é preparado e submetido logo no início.
 
 ---
 
