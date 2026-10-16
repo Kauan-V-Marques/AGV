@@ -2,7 +2,7 @@ import io
 import unittest
 from unittest.mock import patch
 
-from apoio import aprendizado_isolado, estado_isolado, rostos_isolado
+from apoio import aprendizado_isolado, estado_isolado, mapeamento_isolado, rostos_isolado
 
 from pc_agv import estado, util
 from pc_agv.web import rotas
@@ -180,6 +180,49 @@ class TestAprendizado(_Base):
         self._banco = aprendizado_isolado(abrir=False)
         self._banco.__enter__()
         self.assertEqual(self.client.post("/api/ia/treinar").status_code, 503)
+
+
+class TestMapa(_Base):
+    def setUp(self):
+        super().setUp()
+        self._mapa = mapeamento_isolado()
+        self._mapa.__enter__()
+
+    def tearDown(self):
+        self._mapa.__exit__(None, None, None)
+        super().tearDown()
+
+    def test_status_e_resumo_no_status_geral(self):
+        dados = self.client.get("/api/mapa/status").get_json()
+        self.assertFalse(dados["mapa"]["rodando"])
+        self.assertIsNone(dados["mapa"]["recorte"])
+        self.assertIn("mapa", self.client.get("/api/status").get_json())
+
+    def test_ligar_pausar_novo(self):
+        self.assertTrue(self.client.post("/api/mapa/ligar").get_json()["mapa"]["rodando"])
+        self.assertFalse(self.client.post("/api/mapa/pausar").get_json()["mapa"]["rodando"])
+        self.assertEqual(self.client.post("/api/mapa/novo").get_json()["resultado"], "novo")
+
+    def test_erros_de_salvar_abrir_e_apagar(self):
+        resposta = self.client.post("/api/mapa/salvar", json={"nome": ""})
+        self.assertEqual((resposta.status_code, resposta.get_json()["error"]), (400, "nome_obrigatorio"))
+        resposta = self.client.post("/api/mapa/salvar", json={"nome": "sala"})
+        self.assertEqual((resposta.status_code, resposta.get_json()["error"]), (409, "mapa_vazio"))
+        self.assertEqual(self.client.post("/api/mapa/7/abrir").status_code, 404)
+        self.assertEqual(self.client.post("/api/mapa/7/apagar").status_code, 404)
+        self.assertEqual(self.client.get("/api/mapa/lista").get_json()["mapas"], [])
+
+    def test_configuracao_do_avanco(self):
+        self.assertEqual(self.client.post("/api/mapa/config", json={"avanco_cm": "x"}).status_code, 400)
+        resposta = self.client.post("/api/mapa/config", json={"avanco_cm": 15})
+        self.assertEqual(resposta.get_json()["mapa"]["avanco_cm"], 15.0)
+
+    def test_imagem_vazia_e_com_mapa(self):
+        self.assertEqual(self.client.get("/api/mapa/imagem.png").status_code, 204)
+        with patch("pc_agv.mapeamento.servico.imagem_png", return_value=b"\x89PNG..."):
+            resposta = self.client.get("/api/mapa/imagem.png")
+        self.assertEqual((resposta.status_code, resposta.mimetype), (200, "image/png"))
+        self.assertEqual(resposta.headers["Cache-Control"], "no-store")
 
 
 class TestConfiguracoes(_Base):

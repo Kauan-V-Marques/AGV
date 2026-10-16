@@ -5,9 +5,14 @@ import os
 import tempfile
 from unittest.mock import patch
 
+import numpy as np
+
 from pc_agv import estado
 from pc_agv.aprendizado import servico
 from pc_agv.hardware import arduino
+from pc_agv.mapeamento import servico as servico_mapa
+from pc_agv.mapeamento.grade import Grade
+from pc_agv.mapeamento.odometria import Odometria
 from pc_agv.visao import rostos
 
 
@@ -124,3 +129,31 @@ def aprendizado_isolado(abrir: bool = True):
             yield caminho
         finally:
             servico.encerrar()
+
+
+@contextlib.contextmanager
+def mapeamento_isolado(abrir: bool = True, tamanho_m: float = 12.0):
+    """Mapeamento com banco proprio numa pasta temporaria e mapa vazio; tudo volta ao sair."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as pasta, contextlib.ExitStack() as pilha:
+        valores = {
+            "_banco": None,
+            "_erro_banco": None,
+            "_avanco_m": 0.0,
+            "_grade": Grade(tamanho_m, 0.05),
+            "_odometria": Odometria(avanco_m=0.0),
+            "_trajetoria": [],
+            "_varredura": np.zeros((0, 2)),
+            "_estado": {"rodando": False, "somente_leitura": False, "mapa_id": None, "nome": None,
+                        "leituras": 0, "falhas": 0, "salvo": True},
+            "_png": (-1, None),
+        }
+        for nome, valor in valores.items():
+            pilha.enter_context(patch.object(servico_mapa, nome, valor))
+        pilha.enter_context(patch.object(servico_mapa, "MAPA_TAMANHO_M", tamanho_m))
+        caminho = os.path.join(pasta, "mapas.db")
+        if abrir:
+            servico_mapa.iniciar(caminho)
+        try:
+            yield caminho
+        finally:
+            servico_mapa.encerrar()

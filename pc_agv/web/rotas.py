@@ -20,6 +20,7 @@ from pc_agv import util
 from pc_agv.aprendizado import servico as aprendizado
 from pc_agv.hardware import arduino
 from pc_agv.hardware import kinect
+from pc_agv.mapeamento import servico as mapeamento
 from pc_agv.visao import rostos
 from pc_agv.web import mjpeg
 
@@ -307,3 +308,75 @@ def route_ia_apagar():
     if not ok:
         return _erro_ia(resultado)
     return jsonify({"ok": True, "apagado": resultado})
+
+
+# ── Auto-mapeamento ─────────────────────────────────────────────────
+_STATUS_ERRO_MAPA = {
+    "banco_indisponivel": 503,
+    "mapa_inexistente": 404,
+    "mapa_somente_leitura": 409,
+    "mapa_vazio": 409,
+    "mapa_ilegivel": 422,
+}
+
+
+def _resposta_mapa(ok: bool, resultado):
+    if not ok:
+        return jsonify({"ok": False, "error": resultado}), _STATUS_ERRO_MAPA.get(resultado, 400)
+    return jsonify({"ok": True, "resultado": resultado, "mapa": mapeamento.status_detalhado()})
+
+
+@app.route("/api/mapa/status")
+def route_mapa_status():
+    return jsonify({"ok": True, "mapa": mapeamento.status_detalhado()})
+
+
+@app.route("/api/mapa/ligar", methods=["POST"])
+def route_mapa_ligar():
+    return _resposta_mapa(*mapeamento.ligar())
+
+
+@app.route("/api/mapa/pausar", methods=["POST"])
+def route_mapa_pausar():
+    return _resposta_mapa(*mapeamento.pausar())
+
+
+@app.route("/api/mapa/novo", methods=["POST"])
+def route_mapa_novo():
+    return _resposta_mapa(*mapeamento.novo())
+
+
+@app.route("/api/mapa/salvar", methods=["POST"])
+def route_mapa_salvar():
+    payload = request.get_json(silent=True) or {}
+    return _resposta_mapa(*mapeamento.salvar(payload.get("nome", "")))
+
+
+@app.route("/api/mapa/config", methods=["POST"])
+def route_mapa_config():
+    return _resposta_mapa(*mapeamento.configurar(request.get_json(silent=True) or {}))
+
+
+@app.route("/api/mapa/lista")
+def route_mapa_lista():
+    return jsonify({"ok": True, "mapas": mapeamento.listar()})
+
+
+@app.route("/api/mapa/<int:mapa_id>/abrir", methods=["POST"])
+def route_mapa_abrir(mapa_id: int):
+    return _resposta_mapa(*mapeamento.abrir(mapa_id))
+
+
+@app.route("/api/mapa/<int:mapa_id>/apagar", methods=["POST"])
+def route_mapa_apagar(mapa_id: int):
+    return _resposta_mapa(*mapeamento.apagar(mapa_id))
+
+
+@app.route("/api/mapa/imagem.png")
+def route_mapa_imagem():
+    dados = mapeamento.imagem_png()
+    if dados is None:
+        return "", 204
+    resposta = Response(dados, mimetype="image/png")
+    resposta.headers["Cache-Control"] = "no-store"
+    return resposta
