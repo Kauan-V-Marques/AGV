@@ -1,8 +1,8 @@
 # Changelog
 
-Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v1.0.2`, `v1.0.3`, `v1.0.4` e `v1.1.0`).
+Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v1.0.2`, `v1.0.3`, `v1.0.4`, `v1.1.0` e `v1.1.1`).
 
-## [Não lançado]
+## [1.1.1] — 2026-10-16 — Alinhamento ao artigo V2
 
 ### Documentação
 

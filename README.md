@@ -1615,10 +1615,14 @@ gitGraph
     commit id: "revisão da documentação"
     checkout main
     merge docs/revisao-entrega id: "entrega UPX" tag: "v1.1.0"
+    branch docs/alinhamento-artigo-v2
+    commit id: "alinha ao artigo V2"
+    checkout main
+    merge docs/alinhamento-artigo-v2 id: "artigo V2" tag: "v1.1.1"
 ```
 
 - **Integração contínua:** o GitHub Actions roda lint, testes (cobertura mínima de 80%), build da imagem Docker e do executável a cada push e pull request; o selo no topo do README mostra o resultado da `main`.
-- **Tags:** `v1.0.2`, `v1.0.3` e `v1.0.4` marcam as versões do início do projeto; `v1.1.0` marca a entrega da documentação técnica, com o painel novo, o auto-aprendizado e o auto-mapeamento. O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). Veja as [tags](https://github.com/Kauan-V-Marques/AGV/tags) e o [histórico completo](https://github.com/Kauan-V-Marques/AGV/commits/main).
+- **Tags:** `v1.0.2`, `v1.0.3` e `v1.0.4` marcam as versões do início do projeto; `v1.1.0` marca a entrega da documentação técnica, com o painel novo, o auto-aprendizado e o auto-mapeamento; `v1.1.1` alinha a documentação à versão 2 do artigo e à apresentação do projeto. O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). Veja as [tags](https://github.com/Kauan-V-Marques/AGV/tags) e o [histórico completo](https://github.com/Kauan-V-Marques/AGV/commits/main).
 
 ---
 
