@@ -16,6 +16,7 @@ import { iniciarNavegacao } from "./js/navegacao.js";
 import { ensureAudioReady, iniciarRostos } from "./js/rostos.js";
 import { iniciarTelemetria } from "./js/telemetria.js";
 import { $ } from "./js/util.js";
+import { desenharMapa, iniciarMapa } from "./js/mapa.js";
 import { iniciarHud, iniciarVideos, tirarFoto } from "./js/videos.js";
 
 iniciarTema();
@@ -41,6 +42,7 @@ iniciarLink();
 iniciarKinect();
 iniciarRostos();
 iniciarAprendizado();
+iniciarMapa();
 $("btn-foto").addEventListener("click", tirarFoto);
 
 // O navegador so libera o audio depois de uma interacao do usuario.
@@ -54,11 +56,13 @@ window.addEventListener("resize", () => {
   redimensionar = setTimeout(() => {
     desenharGraficos();
     desenharCurva();
+    desenharMapa();
   }, 120);
 });
 window.addEventListener("agv:tema", () => {
   desenharGraficos();
   desenharCurva();
+  desenharMapa();
 });
 
 iniciarTelemetria();

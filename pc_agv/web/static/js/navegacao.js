@@ -2,10 +2,11 @@
 
 import { desenharCurva } from "./aprendizado.js";
 import { desenharGraficos } from "./graficos.js";
+import { aoMostrarMapa, desenharMapa } from "./mapa.js";
 import { $, gravarPreferencia, lerPreferencia } from "./util.js";
 import { posicionarVideos } from "./videos.js";
 
-const SECOES = ["painel", "cameras", "telemetria", "aprendizado", "configuracoes"];
+const SECOES = ["painel", "cameras", "telemetria", "aprendizado", "mapa", "configuracoes"];
 
 function fecharMenu() {
   document.body.classList.remove("menu-aberto");
@@ -38,7 +39,9 @@ export function mostrarSecao(nome) {
   requestAnimationFrame(() => {
     desenharGraficos();
     desenharCurva();
+    desenharMapa();
   });
+  if (nome === "mapa") aoMostrarMapa();
   fecharMenu();
 }
 

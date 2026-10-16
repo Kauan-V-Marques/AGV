@@ -2,6 +2,7 @@
 
 import { aplicarEstabilizacao } from "./ajustes.js";
 import { atualizarAprendizado } from "./aprendizado.js";
+import { atualizarResumoMapa } from "./mapa.js";
 import { aplicarModoNaTela } from "./controle.js";
 import { controlState } from "./estado.js";
 import { atualizarSetor, desenharGraficos, registrarLeitura } from "./graficos.js";
@@ -127,8 +128,9 @@ export function updateTelemetry(snapshot, iniciadoEm = Date.now()) {
   updateFaceSelector(face);
   atualizarEstadoRosto(face);
 
-  // ── aprendizado ──
+  // ── aprendizado e mapa ──
   atualizarAprendizado(snapshot.ia);
+  atualizarResumoMapa(snapshot.mapa);
 
   marcarQuadros();
 }
