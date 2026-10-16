@@ -6,6 +6,8 @@ export const controlState = {
   mobile: { x: 0, y: 0, active: false },
   lastSpeed: 0,
   lastSteering: 0,
+  // quando a tela trocou o modo pela ultima vez (ms): status mais antigos nao desfazem a troca
+  modoAlteradoEm: 0,
 };
 
 export const uiState = {
@@ -18,6 +20,8 @@ export const uiState = {
   audioReady: false,
   audioContext: null,
   som: true,
+  // ha um modelo treinado (libera o modo IA)
+  iaPronta: false,
   // camera em destaque em cada secao (id da secao -> "rgb" | "depth" | "zed")
   foco: {},
 };

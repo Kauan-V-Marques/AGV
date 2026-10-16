@@ -52,15 +52,15 @@
       <button class="menu-item" type="button" data-secao="telemetria">
         <svg><use href="#i-grafico"/></svg><span>Telemetria</span>
       </button>
+      <button class="menu-item" type="button" data-secao="aprendizado">
+        <svg><use href="#i-cerebro"/></svg><span>Aprendizado</span><em class="menu-selo selo-treino" id="menu-selo-ia" hidden>treinando</em>
+      </button>
       <button class="menu-item" type="button" data-secao="configuracoes">
         <svg><use href="#i-ajustes"/></svg><span>Configurações</span>
       </button>
       <p class="menu-grupo">Em breve</p>
       <button class="menu-item" type="button" disabled title="Auto-mapeamento: em desenvolvimento">
         <svg><use href="#i-mapa"/></svg><span>Mapa</span>
-      </button>
-      <button class="menu-item" type="button" disabled title="Auto-aprendizado: em desenvolvimento">
-        <svg><use href="#i-cerebro"/></svg><span>Aprendizado</span>
       </button>
     </nav>
     <div class="lateral-rodape">
@@ -166,11 +166,13 @@
               <h2>Controle do AGV</h2>
               <span class="quadro-sub" id="motivo-auto"></span>
             </header>
-            <div class="segmentado" role="radiogroup" aria-label="Modo de condução">
+            <div class="segmentado" data-modo="manual" role="radiogroup" aria-label="Modo de condução">
               <span class="segmentado-cursor" aria-hidden="true"></span>
               <button class="mode-button is-selected" type="button" data-mode="manual" id="btn-manual" role="radio" aria-checked="true">Manual</button>
               <button class="mode-button" type="button" data-mode="auto" id="btn-auto" role="radio" aria-checked="false">Autônomo</button>
+              <button class="mode-button indisponivel" type="button" data-mode="ia" id="btn-ia" role="radio" aria-checked="false" title="Treine um modelo em Aprendizado para liberar">IA</button>
             </div>
+            <p class="dica-ia" id="dica-ia" hidden><svg><use href="#i-cerebro"/></svg>A IA está dirigindo. Segure uma tecla (ou o joystick) para corrigir; ao soltar, ela volta a dirigir.</p>
 
             <div class="controle-centro">
             <div class="pad" id="keyboard-pad">
@@ -241,7 +243,7 @@
               <div class="resumo-item"><span>Acelerômetro</span><strong id="tg-accel">--</strong><small>x · y · z (m/s²)</small></div>
               <div class="resumo-item"><span>Quadros/s</span><strong id="tg-fps">--</strong><small>RGB · prof. · ZED</small></div>
               <div class="resumo-item"><span>Atraso do vídeo</span><strong id="tg-atraso">--</strong><small>idade do último quadro</small></div>
-              <div class="resumo-item"><span>Autônomo</span><strong id="tg-motivo">--</strong><small>última decisão</small></div>
+              <div class="resumo-item"><span>Decisão</span><strong id="tg-motivo">--</strong><small>autônomo ou IA</small></div>
               <div class="resumo-item"><span>Limite</span><strong id="tg-limite">--</strong><small>velocidade máxima</small></div>
             </div>
           </article>
@@ -287,6 +289,119 @@
           <div class="metrica larga"><span>Kinect</span><strong id="kinect-status">--</strong></div>
           <div class="metrica larga"><span>Câmera ZED</span><strong id="zed-status">--</strong></div>
           <div class="metrica larga"><span>Arduino</span><strong id="serial-status">--</strong></div>
+        </div>
+      </section>
+
+      <!-- ── Aprendizado ─────────────────────────────────────────── -->
+      <section class="secao" id="secao-aprendizado" data-titulo="Aprendizado" hidden>
+        <div class="alerta-ia" id="ia-alerta" role="alert" hidden>
+          <svg><use href="#i-parar"/></svg><p id="ia-alerta-texto">Banco do aprendizado indisponível.</p>
+        </div>
+
+        <div class="ia-indicadores">
+          <div class="kpi">
+            <span class="kpi-icone"><svg><use href="#i-grafico"/></svg></span>
+            <div><span>Exemplos gravados</span><strong id="ia-total">--</strong><small id="ia-total-detalhe">operador · correções · IA</small></div>
+          </div>
+          <div class="kpi">
+            <span class="kpi-icone"><svg><use href="#i-cerebro"/></svg></span>
+            <div><span>Modelo em uso</span><strong id="ia-modelo">nenhum</strong><small id="ia-modelo-detalhe">treine para liberar o modo IA</small></div>
+          </div>
+          <div class="kpi">
+            <span class="kpi-icone"><svg><use href="#i-ok"/></svg></span>
+            <div><span>Acerto de direção</span><strong id="ia-acerto">--</strong><small id="ia-acerto-detalhe">comparado ao operador</small></div>
+          </div>
+          <div class="kpi">
+            <span class="kpi-icone"><svg><use href="#i-recarregar"/></svg></span>
+            <div>
+              <span>Treino</span><strong id="ia-treino">--</strong>
+              <div class="progresso" aria-hidden="true"><div class="progresso-barra" id="ia-progresso"></div></div>
+              <small id="ia-treino-detalhe">--</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="grade-ia">
+          <article class="quadro ia-passos">
+            <header class="quadro-topo"><h2>Como a IA aprende</h2><span class="quadro-sub">os dados ficam em logs/aprendizado.db</span></header>
+            <ol class="passos">
+              <li class="passo" id="ia-passo-1" data-estado="atual">
+                <span class="passo-marca">1</span>
+                <div><strong>Ensinar</strong><p>Dirija no modo <em>Manual</em> com "Aprender com o operador" ligado. Cada manobra vira um exemplo: a profundidade do Kinect e o comando que você deu.</p><small id="ia-passo-1-info"></small></div>
+              </li>
+              <li class="passo" id="ia-passo-2" data-estado="pendente">
+                <span class="passo-marca">2</span>
+                <div><strong>Treinar</strong><p id="ia-passo-2-texto">Com exemplos suficientes, treine a rede. Ela também treina sozinha a cada lote de exemplos novos, com o AGV parado.</p></div>
+              </li>
+              <li class="passo" id="ia-passo-3" data-estado="pendente">
+                <span class="passo-marca">3</span>
+                <div><strong>Dirigir com a IA</strong><p>Escolha <em>IA</em> no controle. Quando ela errar, corrija com as teclas ou o joystick: a correção vale na hora e vira exemplo com peso dobrado.</p></div>
+              </li>
+              <li class="passo" id="ia-passo-4" data-estado="pendente">
+                <span class="passo-marca">4</span>
+                <div><strong>Refinar pela recompensa</strong><p>Treine de novo: as ações da IA entram pesadas pela recompensa. Avançar com caminho livre soma; chegar perto de obstáculo, ser corrigida ou causar uma parada de emergência subtrai.</p></div>
+              </li>
+            </ol>
+          </article>
+
+          <article class="quadro ia-ajustes">
+            <header class="quadro-topo"><h2>Ajustes</h2><span class="quadro-sub">salvos no AGV</span></header>
+            <div class="bloco">
+              <label class="interruptor">
+                <input type="checkbox" id="ia-gravando" checked>
+                <span class="interruptor-trilho"><span class="interruptor-bola"></span></span>
+                <span class="interruptor-texto">Aprender com o operador (gravar exemplos)</span>
+              </label>
+              <label class="interruptor">
+                <input type="checkbox" id="ia-explorar">
+                <span class="interruptor-trilho"><span class="interruptor-bola"></span></span>
+                <span class="interruptor-texto">Explorar variações no modo IA</span>
+              </label>
+              <p class="dica">Explorar soma um pequeno desvio aleatório ao comando da IA para ela descobrir manobras melhores. Use em área livre.</p>
+            </div>
+            <div class="bloco">
+              <h3>Velocidade máxima da IA</h3>
+              <div class="controle-deslizante">
+                <input type="range" class="speed-slider" id="ia-vel-max" min="0" max="100" value="50" step="5" aria-label="Velocidade máxima da IA">
+                <output id="ia-vel-max-valor" for="ia-vel-max">50%</output>
+              </div>
+              <p class="dica">Vale só no modo IA, além do limite geral de Configurações.</p>
+            </div>
+            <div class="bloco">
+              <h3>Segurança do modo IA</h3>
+              <ul class="lista-seguranca">
+                <li><strong>Obstáculo a menos de 0,35 m:</strong> a IA não avança, só gira ou dá ré.</li>
+                <li><strong>Menos de 0,60 m:</strong> no máximo 25% para a frente.</li>
+                <li><strong>Ré:</strong> no máximo 30%, porque não há sensor atrás.</li>
+                <li><strong>Parada de emergência:</strong> sempre funciona e ensina a IA a evitar o que causou a parada.</li>
+              </ul>
+            </div>
+            <div class="bloco acoes-ia">
+              <button class="botao botao-primario" id="btn-ia-treinar" type="button">
+                <span class="carregador" aria-hidden="true"></span><svg><use href="#i-cerebro"/></svg><span>Treinar agora</span>
+              </button>
+              <button class="botao botao-perigo" id="btn-ia-apagar" type="button"><svg><use href="#i-fechar"/></svg><span>Apagar dados…</span></button>
+            </div>
+          </article>
+
+          <article class="quadro ia-curva">
+            <header class="quadro-topo"><h2>Curva de treino</h2><span class="quadro-sub" id="ia-curva-sub">sem modelo</span></header>
+            <div class="grafico-legenda"><span class="l-treino">treino</span><span class="l-validacao">validação</span><span class="l-tempo">erro por época</span></div>
+            <canvas class="grafico-curva" id="grafico-ia" aria-label="Erro do modelo a cada época de treino"></canvas>
+            <p class="dica">A validação usa os 20% de exemplos mais recentes, que a rede não viu no treino. O treino para sozinho quando ela deixa de melhorar.</p>
+          </article>
+
+          <article class="quadro ia-modelos">
+            <header class="quadro-topo"><h2>Modelos salvos</h2><span class="quadro-sub">os 10 mais recentes</span></header>
+            <div class="tabela-rolagem">
+              <table class="tabela tabela-modelos">
+                <thead><tr><th>Modelo</th><th>Treinado em</th><th>Fase</th><th>Exemplos</th><th>Acerto</th><th></th></tr></thead>
+                <tbody id="ia-modelos-corpo">
+                  <tr><td colspan="6" class="vazio">Nenhum modelo treinado ainda.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
         </div>
       </section>
 
@@ -449,6 +564,17 @@
     <button class="hud-exit-btn" id="btn-hud-exit" type="button"><svg><use href="#i-fechar"/></svg>Sair</button>
     <button class="hud-parar" id="btn-hud-stop" type="button" title="Parada total"><svg><use href="#i-parar"/></svg></button>
   </div>
+
+  <!-- Confirmacao para apagar os dados do aprendizado -->
+  <dialog class="dialogo" id="dialogo-apagar" aria-labelledby="dialogo-apagar-titulo">
+    <h2 id="dialogo-apagar-titulo">Apagar dados do aprendizado?</h2>
+    <p>Isso não pode ser desfeito.</p>
+    <div class="dialogo-opcoes">
+      <button class="botao" type="button" data-alvo="amostras"><strong>Só os exemplos</strong><small>mantém o modelo em uso</small></button>
+      <button class="botao botao-perigo" type="button" data-alvo="tudo"><strong>Tudo</strong><small>exemplos e modelos; o modo IA fica bloqueado</small></button>
+    </div>
+    <button class="botao dialogo-cancelar" type="button" id="dialogo-apagar-cancelar">Cancelar</button>
+  </dialog>
 
   <div class="avisos" id="avisos" aria-live="polite"></div>
 

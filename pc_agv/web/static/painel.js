@@ -2,6 +2,7 @@
 // Cada assunto fica em static/js/: controle, videos, telemetria, rostos, ajustes...
 
 import { iniciarKinect, iniciarLink, iniciarSom, iniciarTema, iniciarVelocidade } from "./js/ajustes.js";
+import { desenharCurva, iniciarAprendizado } from "./js/aprendizado.js";
 import {
   emergencyStop,
   iniciarJoystick,
@@ -27,6 +28,7 @@ iniciarHud({ aoParar: emergencyStop });
 // Conducao
 $("btn-manual").addEventListener("click", () => setMode("manual"));
 $("btn-auto").addEventListener("click", () => setMode("auto"));
+$("btn-ia").addEventListener("click", () => setMode("ia"));
 $("btn-stop").addEventListener("click", emergencyStop);
 iniciarTeclado();
 iniciarJoystick();
@@ -38,6 +40,7 @@ iniciarVelocidade();
 iniciarLink();
 iniciarKinect();
 iniciarRostos();
+iniciarAprendizado();
 $("btn-foto").addEventListener("click", tirarFoto);
 
 // O navegador so libera o audio depois de uma interacao do usuario.
@@ -48,8 +51,14 @@ let redimensionar = null;
 window.addEventListener("resize", () => {
   setupControlSurface();
   clearTimeout(redimensionar);
-  redimensionar = setTimeout(desenharGraficos, 120);
+  redimensionar = setTimeout(() => {
+    desenharGraficos();
+    desenharCurva();
+  }, 120);
 });
-window.addEventListener("agv:tema", desenharGraficos);
+window.addEventListener("agv:tema", () => {
+  desenharGraficos();
+  desenharCurva();
+});
 
 iniciarTelemetria();

@@ -1,10 +1,11 @@
 // Navegacao: menu lateral, secoes e menu do celular.
 
+import { desenharCurva } from "./aprendizado.js";
 import { desenharGraficos } from "./graficos.js";
 import { $, gravarPreferencia, lerPreferencia } from "./util.js";
 import { posicionarVideos } from "./videos.js";
 
-const SECOES = ["painel", "cameras", "telemetria", "configuracoes"];
+const SECOES = ["painel", "cameras", "telemetria", "aprendizado", "configuracoes"];
 
 function fecharMenu() {
   document.body.classList.remove("menu-aberto");
@@ -34,7 +35,10 @@ export function mostrarSecao(nome) {
   gravarPreferencia("agv_secao", nome);
   if (location.hash !== `#${nome}`) history.replaceState(null, "", `#${nome}`);
   posicionarVideos();
-  requestAnimationFrame(desenharGraficos);
+  requestAnimationFrame(() => {
+    desenharGraficos();
+    desenharCurva();
+  });
   fecharMenu();
 }
 

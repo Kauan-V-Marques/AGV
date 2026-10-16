@@ -1,4 +1,5 @@
 // Conducao: modo, teclado (WASD/setas), joystick, keepalive do watchdog e parada total.
+// No modo IA o mesmo teclado/joystick vale como correcao do operador.
 
 import { postJson } from "./api.js";
 import { controlState, uiState } from "./estado.js";
@@ -43,8 +44,13 @@ export function deriveManualCommand() {
 let _controlAbort = null;
 let _controlPending = 0;
 
+// Modos em que o comando do operador vale: manual (dirige) e IA (corrige a rede).
+const MODOS_COM_OPERADOR = ["manual", "ia"];
+const ROTULOS_MODO = { manual: "MANUAL", auto: "AUTÔNOMO", ia: "IA" };
+const ESTADO_TOPO = { manual: "ok", auto: "auto", ia: "ia" };
+
 export async function sendManualCommand(source, keepalive) {
-  if (controlState.mode !== "manual") return;
+  if (!MODOS_COM_OPERADOR.includes(controlState.mode)) return;
   const next = deriveManualCommand();
   if (keepalive) {
     // Keepalive so repete comando em movimento e nunca cancela um envio ainda em voo.
@@ -66,7 +72,7 @@ export async function sendManualCommand(source, keepalive) {
   _controlPending += 1;
   try {
     await postJson("/api/control", {
-      mode: "manual",
+      mode: controlState.mode,
       speed: next.speed,
       steering: next.steering,
       source: source || "site-manual",
@@ -85,24 +91,42 @@ export function iniciarKeepalive() {
   setInterval(() => sendManualCommand("site-keepalive", true), 500);
 }
 
+// Chamada a cada status: so mexe no DOM quando o valor muda.
 export function aplicarModoNaTela(mode) {
-  const auto = mode === "auto";
-  document.querySelectorAll(".mode-button").forEach((button) => {
-    const selecionado = button.dataset.mode === mode;
-    button.classList.toggle("is-selected", selecionado);
-    button.setAttribute("aria-checked", selecionado ? "true" : "false");
-  });
-  document.querySelectorAll(".segmentado").forEach((el) => el.classList.toggle("auto", auto));
-  const selo = $("selo-modo");
-  if (selo) {
-    selo.textContent = auto ? "AUTÔNOMO" : "MANUAL";
-    selo.classList.toggle("auto", auto);
+  const rotulo = ROTULOS_MODO[mode] || "MANUAL";
+  const segmentado = document.querySelector(".segmentado");
+  if (segmentado && segmentado.dataset.modo !== mode) {
+    segmentado.dataset.modo = mode;
+    document.querySelectorAll(".mode-button").forEach((button) => {
+      const selecionado = button.dataset.mode === mode;
+      button.classList.toggle("is-selected", selecionado);
+      button.setAttribute("aria-checked", selecionado ? "true" : "false");
+    });
   }
+  const selo = $("selo-modo");
+  if (selo && selo.dataset.modo !== mode) {
+    selo.textContent = rotulo;
+    selo.dataset.modo = mode;
+  }
+  const dica = $("dica-ia");
+  if (dica) dica.hidden = mode !== "ia";
+  // Pilula de estado no topo (a telemetria troca para "SEM CONEXÃO" se o AGV parar de responder).
+  const topo = $("estado-agv");
+  const estadoTopo = ESTADO_TOPO[mode] || "ok";
+  if (topo && topo.dataset.estado !== estadoTopo) topo.dataset.estado = estadoTopo;
+  const texto = $("estado-agv-texto");
+  if (texto && texto.textContent !== `ONLINE · ${rotulo}`) texto.textContent = `ONLINE · ${rotulo}`;
 }
 
 export async function setMode(mode) {
+  if (mode === "ia" && !uiState.iaPronta) {
+    aviso("Treine um modelo em Aprendizado antes de usar o modo IA.", "erro");
+    return;
+  }
+  const anterior = controlState.mode;
   controlState.mode = mode;
-  if (mode === "auto") {
+  controlState.modoAlteradoEm = Date.now();
+  if (mode !== "manual") {
     controlState.pressed = { w: false, a: false, s: false, d: false };
     controlState.lastSpeed = 0;
     controlState.lastSteering = 0;
@@ -111,7 +135,18 @@ export async function setMode(mode) {
   aplicarModoNaTela(mode);
 
   try {
-    await postJson("/api/control", { mode, speed: 0, steering: 0, source: "site-mode" });
+    const resposta = await postJson("/api/control", { mode, speed: 0, steering: 0, source: "site-mode" });
+    if (resposta && resposta.ok === false) {
+      // O AGV recusou (ex.: modo IA sem modelo): a tela volta ao modo em que ele continua.
+      controlState.mode = anterior;
+      controlState.modoAlteradoEm = Date.now();
+      aplicarModoNaTela(anterior);
+      aviso(resposta.error === "sem_modelo"
+        ? "Treine um modelo em Aprendizado antes de usar o modo IA."
+        : "O AGV recusou a troca de modo.", "erro");
+    } else if (mode === "ia" && anterior !== "ia") {
+      aviso("Modo IA: a rede treinada está dirigindo. Segure uma tecla para corrigir.", "ok");
+    }
   } catch (error) {
     console.error(error);
     aviso("Não foi possível trocar o modo: sem resposta do AGV.", "erro");
@@ -130,6 +165,7 @@ export function setPressed(key, value, source) {
 
 export async function emergencyStop() {
   controlState.mode = "manual";
+  controlState.modoAlteradoEm = Date.now();
   controlState.pressed = { w: false, a: false, s: false, d: false };
   controlState.mobile = { x: 0, y: 0, active: false };
   controlState.lastSpeed = 0;
@@ -271,7 +307,8 @@ export function iniciarJoystick() {
   joystickBase.addEventListener("pointerdown", (event) => {
     if (!uiState.isMobileControl) return;
     event.preventDefault();
-    if (controlState.mode !== "manual") setMode("manual");
+    // No autonomo por regras o stick assume o controle; no modo IA ele corrige a rede.
+    if (controlState.mode === "auto") setMode("manual");
     activePointerId = event.pointerId;
     joystickBase.setPointerCapture(event.pointerId);
     updateStickFromPointer(event.clientX, event.clientY);

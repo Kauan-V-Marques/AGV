@@ -1,6 +1,7 @@
 // Telemetria: le /api/status com polling adaptativo e atualiza todos os quadros.
 
 import { aplicarEstabilizacao } from "./ajustes.js";
+import { atualizarAprendizado } from "./aprendizado.js";
 import { aplicarModoNaTela } from "./controle.js";
 import { controlState } from "./estado.js";
 import { atualizarSetor, desenharGraficos, registrarLeitura } from "./graficos.js";
@@ -35,7 +36,9 @@ function grau(valor) {
   return typeof valor === "number" ? `${valor.toFixed(1)}°` : "--";
 }
 
-export function updateTelemetry(snapshot) {
+// iniciadoEm: quando o pedido de status saiu (ms). Um status que saiu antes da ultima
+// troca de modo feita na tela ainda traz o modo antigo e nao deve desfaze-la.
+export function updateTelemetry(snapshot, iniciadoEm = Date.now()) {
   const state = snapshot.state || {};
   const agv = snapshot.agv || {};
   const autopilot = snapshot.autopilot || {};
@@ -44,11 +47,14 @@ export function updateTelemetry(snapshot) {
   const zed = snapshot.zed || {};
   const face = snapshot.face || {};
   const settings = snapshot.settings || {};
-  const modo = agv.mode || "manual";
+  if ((agv.mode || "manual") !== controlState.mode && iniciadoEm > controlState.modoAlteradoEm) {
+    controlState.mode = agv.mode || "manual";
+  }
+  // Modo que a tela mostra: o do AGV, salvo se a tela acabou de troca-lo.
+  const modo = controlState.mode;
 
   // ── barra superior ──
-  definirEstado("estado-agv", modo === "auto" ? "auto" : "ok");
-  definirTexto("estado-agv-texto", modo === "auto" ? "ONLINE · AUTÔNOMO" : "ONLINE · MANUAL");
+  aplicarModoNaTela(modo);
   definirEstado("st-kinect", state.kinect_ok ? "ok" : "erro");
   definirEstado("st-zed", zed.online ? "ok" : "off");
   definirEstado("st-serial", arduino.connected ? "ok" : "erro");
@@ -67,11 +73,8 @@ export function updateTelemetry(snapshot) {
   // ── controle ──
   atualizarMedidor("medidor-vel", "valor-vel", agv.active_speed);
   atualizarMedidor("medidor-dir", "valor-dir", agv.active_steering);
-  definirTexto("motivo-auto", modo === "auto" ? `decisão: ${autopilot.last_reason || "--"}` : "");
-  if (modo !== controlState.mode) {
-    controlState.mode = modo;
-    aplicarModoNaTela(modo);
-  }
+  const decisao = agv.active_source === "correcao" ? "correção do operador" : (autopilot.last_reason || "--");
+  definirTexto("motivo-auto", modo === "manual" ? "" : `decisão: ${decisao}`);
 
   // ── telemetria geral ──
   const accel = Array.isArray(state.accel) ? state.accel : [];
@@ -124,6 +127,9 @@ export function updateTelemetry(snapshot) {
   updateFaceSelector(face);
   atualizarEstadoRosto(face);
 
+  // ── aprendizado ──
+  atualizarAprendizado(snapshot.ia);
+
   marcarQuadros();
 }
 
@@ -162,7 +168,7 @@ async function refreshStatus() {
     const snapshot = await response.json();
     clearTimeout(tid);
     const rtt = Date.now() - t0;
-    updateTelemetry(snapshot);
+    updateTelemetry(snapshot, t0);
     _statusFail = 0;
     // Polling adaptativo: quanto mais rapido o RTT, mais frequente o poll.
     _statusInterval = rtt < 300 ? 500 : rtt < 800 ? 900 : 1800;
