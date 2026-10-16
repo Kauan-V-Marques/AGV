@@ -2,6 +2,14 @@
 
 Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v1.0.2`, `v1.0.3`, `v1.0.4` e `v1.1.0`).
 
+## [Não lançado]
+
+### Documentação
+
+- Síntese da pesquisa (`docs/documents/pesquisa-artigo.md`) atualizada para a versão 2 do artigo: condições comparadas, desenho experimental intrassujeitos com 20 operadores, definições operacionais, Comitê de Ética e avaliação técnica das sobreposições com critérios de aceitação.
+- README alinhado ao artigo V2 e à apresentação do projeto: etapas da pesquisa, objetivos técnicos (zona não medida e avaliação técnica), RF39, cronograma com os meses previstos, papéis da equipe unificados, Prof. Dr. Daniel Ohata e alcance do Kinect v1 (Wasenmüller e Stricker, 2017).
+- Corrigido o Problema 20, que aparecia como título no GitHub por falta de uma linha em branco antes do separador.
+
 ## [1.1.0] — 2026-10-16 — Entrega da documentação técnica
 
 ### Adicionado
