@@ -231,7 +231,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | RNF08 | Privacidade | Fotos e descritores de rosto ficam apenas em `logs/` no notebook do AGV e não são versionados; o aprendizado guarda só miniaturas de profundidade, sem imagens das câmeras |
 | RNF09 | Segurança de rede | O painel não tem autenticação: deve ser usado apenas em rede local confiável |
 | RNF10 | Persistência | Aprendizado e mapas em SQLite (`logs/aprendizado.db`, `logs/mapas.db`); um banco ilegível desliga só aquele recurso, sem apagar o arquivo |
-| RNF11 | Desempenho | Gravação de exemplos e decisão da IA em cerca de 3 ms por quadro; mapeamento em 20 a 40 ms por quadro a 4 quadros/s (medido em simulação). Sem dependências pesadas: NumPy puro |
+| RNF11 | Desempenho | Gravação de exemplos e decisão da IA em cerca de 3 ms por quadro; mapeamento em 16 a 38 ms por quadro a 4 quadros/s (medido em simulação, seção 22.3). Sem dependências pesadas: NumPy puro |
 | RNF12 | Segurança da IA | A rede nunca comanda os motores direto: passa pela camada de segurança, e o operador pode corrigir ou acionar a parada de emergência a qualquer momento |
 
 ---
@@ -255,7 +255,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | SQLite | 3 (módulo `sqlite3` da biblioteca padrão do Python) | Bancos do aprendizado (`logs/aprendizado.db`) e dos mapas (`logs/mapas.db`) |
 | Arduino (C++) | ⚠️ PREENCHER: versão da Arduino IDE usada | Firmware de controle dos motores |
 | Docker Engine + Compose | Compose v2 (`docker compose`) | Empacotamento e execução no notebook do AGV |
-| PyInstaller | 6.x | Executável único `dist/launch_production` |
+| PyInstaller | 6.x (testado 6.18.0) | Executável único `dist/launch_production` |
 | setuptools | < 81 | Mantém o `pkg_resources`, usado pelo `face_recognition_models` |
 | Ruff | 0.x | Lint no CI (só regras que apontam erros reais, ver `ruff.toml`) |
 | coverage.py | 7.x | Cobertura dos testes no CI (mínimo de 80%) |
@@ -320,6 +320,61 @@ Servidor Flask (pc_agv/web/rotas.py)
 | `agv-control` | `controle.py` | 0,12 s | Escolhe o comando (manual, autônomo, IA, correção do operador ou watchdog) e envia ao Arduino |
 | `agv-aprendizado` | `aprendizado/servico.py` | 0,2 s | Grava exemplos; a cada 10 s poda o banco e decide se treina sozinho (o treino roda em `agv-treino`) |
 | `agv-mapeamento` | `mapeamento/servico.py` | 0,25 s | Com o mapeamento ligado: varredura, odometria visual e atualização do mapa |
+
+### Ligações físicas
+
+Como cada equipamento se conecta, com os pinos usados pelo firmware:
+
+```mermaid
+flowchart LR
+    subgraph OPER["Operador"]
+        PC["PC ou celular<br/>navegador"]
+    end
+    subgraph AGV["AGV"]
+        NB["Notebook Linux x86_64<br/>servidor Flask, porta 5000"]
+        KIN["Kinect v1<br/>RGB-D, tilt e acelerômetro"]
+        FONTE["Fonte própria<br/>do Kinect"]
+        ZED["Câmera ZED<br/>traseira"]
+        ARD["Arduino Uno<br/>sketch_may13a"]
+        C1["Controlador BLDC<br/>direito"]
+        C2["Controlador BLDC<br/>esquerdo"]
+        M1(("Motor<br/>direito"))
+        M2(("Motor<br/>esquerdo"))
+    end
+    PC <-->|"Wi-Fi: vídeo MJPEG,<br/>telemetria JSON, comandos POST"| NB
+    NB <-->|"USB: libfreenect"| KIN
+    FONTE --- KIN
+    NB <-->|"USB: V4L2"| ZED
+    NB <-->|"USB serial 9600 baud:<br/>aceleração,direção"| ARD
+    ARD -->|"PWM 5, DIR 4, BRAKE 3"| C1
+    ARD -->|"PWM 9, DIR 10, BRAKE 11"| C2
+    C1 --> M1
+    C2 --> M2
+```
+
+### Inicialização do sistema
+
+O que o `launch_production.py` faz do comando até o painel abrir:
+
+```mermaid
+flowchart TD
+    A(["python3 launch_production.py"]) --> B{"Existe .venv no projeto<br/>e não é o Python atual?"}
+    B -- Sim --> B1["Reinicia com o Python da .venv"] --> C
+    B -- Não --> C{"Está num terminal visível?"}
+    C -- Não --> C1["Reabre num emulador de terminal<br/>(x-terminal-emulator, gnome-terminal,<br/>xfce4-terminal ou xterm);<br/>sem nenhum, grava os logs em arquivo"] --> D
+    C -- Sim --> D{"Trava de instância única<br/>/tmp/agv_launch_production.lock"}
+    D -- "Outro AGV já rodando" --> D1{"O servidor dele responde?"}
+    D1 -- Sim --> D2["Abre o painel que já existe<br/>e encerra"]
+    D1 -- Não --> D3["Avisa para fechar o outro<br/>e encerra com erro"]
+    D -- Livre --> E["Libera o Kinect dos drivers do kernel<br/>(gspca_kinect, gspca_main)"]
+    E --> F{"Servidor já online<br/>na porta 5000?"}
+    F -- Sim --> D2
+    F -- Não --> G["create_server().start()<br/>runtime: abre os bancos SQLite<br/>e sobe as 7 threads"]
+    G --> H{"/api/status responde<br/>em até 25 s?"}
+    H -- Não --> H1["Para o servidor e encerra:<br/>verificar Kinect e serial"]
+    H -- Sim --> I["Abre http://127.0.0.1:5000<br/>no navegador"]
+    I --> J["Ctrl+C ou SIGTERM:<br/>para as threads e o servidor"]
+```
 
 ---
 
@@ -620,6 +675,78 @@ Formato `aceleração,direção\n`, com aceleração em −255..255 e direção 
 | W com limite de velocidade em 50% | `127,0` |
 | Parado | `0,0` |
 
+### Ciclo do firmware do Arduino
+
+O `sketch_may13a.ino` roda a cerca de 100 Hz e é a última barreira de segurança antes dos motores:
+
+```mermaid
+flowchart TD
+    L(["loop(), a cada 10 ms"]) --> T{"Mais de 500 ms sem<br/>comando válido?"}
+    T -- Sim --> T1["Emergência: alvo 0, freio<br/>LED aceso, ARDUINO:TIMEOUT"] --> S
+    T -- Não --> S{"Chegou uma linha<br/>pela serial?"}
+    S -- Não --> R
+    S -- "STOP" --> P1["Emergência: alvo 0"] --> R
+    S -- "RESET" --> P2["Para os motores, zera os erros,<br/>sai da emergência e do modo degradado"] --> R
+    S -- "STATUS / PING" --> P3["Relatório detalhado / ARDUINO:PONG<br/>(o PING renova o timeout)"] --> R
+    S -- "aceleração,direção" --> V{"Formato válido?"}
+    V -- Não --> V1["ARDUINO:ERROR:INVALID<br/>10 erros seguidos: modo degradado"] --> R
+    V -- Sim --> F["Limita a ±255 / ±254<br/>média das 3 últimas leituras (anti-tremor)<br/>modo degradado: no máximo 180"]
+    F --> G["Renova o timeout, sai da emergência<br/>responde ARDUINO:OK:aceleração,direção"]
+    G --> H["Tração diferencial:<br/>direção entre −30 e 30 anda reto;<br/>fora disso um lado reduz ou inverte"]
+    H --> I["Anti-reversão: o motor só troca<br/>de sentido abaixo de PWM 20"]
+    I --> R["Rampa: sobe até 15 por ciclo (30 abaixo de 50)<br/>e desce até 30 por ciclo"]
+    R --> M["PWM nos pinos 5 e 9, DIR e BRAKE<br/>(freio quando a velocidade é 0)"]
+    M --> FB["A cada 100 ms envia STATUS<br/>LED: aceso = emergência, pisca 200 ms = degradado,<br/>pisca 500 ms = normal"]
+```
+
+### Bancos de dados (SQLite)
+
+Dois arquivos em `logs/`: `aprendizado.db` (tabelas `sessoes`, `amostras`, `modelos` e `meta`) e `mapas.db` (tabelas `mapas` e `meta`). A tabela `meta` guarda as preferências de cada recurso.
+
+```mermaid
+erDiagram
+    sessoes ||--o{ amostras : "agrupa"
+    sessoes {
+        INTEGER id PK
+        REAL iniciada_em
+        TEXT modo "manual ou ia"
+    }
+    amostras {
+        INTEGER id PK
+        INTEGER sessao_id FK
+        REAL criada_em
+        TEXT origem "operador, correcao ou ia"
+        INTEGER velocidade "-100 a 100"
+        INTEGER direcao "-100 a 100"
+        BLOB profundidade "miniatura 24x32 uint8"
+        TEXT evento "parada de emergencia"
+    }
+    modelos {
+        INTEGER id PK
+        REAL criado_em
+        TEXT fase "imitacao ou recompensa"
+        INTEGER versao_entrada
+        TEXT info "JSON com metricas e curva"
+        BLOB pesos "rede sem pickle"
+        INTEGER ativo
+    }
+    mapas {
+        INTEGER id PK
+        TEXT nome
+        REAL criado_em
+        REAL atualizado_em
+        REAL resolucao "metros por celula"
+        BLOB grade "log-odds"
+        BLOB trajetoria "pontos x,y float32"
+        REAL distancia_m
+        REAL area_m2
+    }
+    meta {
+        TEXT chave PK
+        TEXT valor
+    }
+```
+
 ---
 
 ## 14. Dependências
@@ -728,6 +855,8 @@ sudo usermod -aG dialout $USER                              # acesso à serial (
 | `AGV_KINECT_DEPTH_FX` / `AGV_KINECT_DEPTH_CX` | `594.21` / `339.31` | Parâmetros intrínsecos da câmera de profundidade (referência do Kinect v1) |
 | `AGV_MAPA_HZ` / `AGV_MAPA_RESOLUCAO_M` / `AGV_MAPA_TAMANHO_M` | `4` / `0.05` / `30` | Quadros por segundo do mapeamento, tamanho da célula e do mapa |
 
+As demais variáveis são ajustes finos (tilt do Kinect, resolução e FPS da ZED, limiares do reconhecimento facial, ciclos de controle, PWM mínimo dos motores) e estão em [`pc_agv/config.py`](pc_agv/config.py), com o valor padrão ao lado; as da serial ficam em [`pc_agv/hardware/arduino.py`](pc_agv/hardware/arduino.py).
+
 ---
 
 ## 16. Como Executar
@@ -832,7 +961,7 @@ O painel tem um **menu lateral** (no celular, no botão ☰ do topo) com as seç
 flowchart TD
     A([Início]) --> B["python3 launch_production.py<br/>ou docker compose up"]
     B --> C["Libera o Kinect<br/>e sobe o servidor Flask"]
-    C --> D["Threads: Kinect, ZED, rosto,<br/>autopiloto e controle"]
+    C --> D["Threads: Kinect, ZED, rosto, autopiloto,<br/>controle, aprendizado e mapeamento"]
     D --> E["Navegador abre o painel"]
     E --> F{Modo}
     F -- Manual --> G["Operador usa WASD / joystick"]
@@ -854,6 +983,58 @@ flowchart TD
     N --> O["Telemetria volta ao painel e ao HUD"]
     O --> F
     E --> P["PARADA DE EMERGÊNCIA"] --> Q["Motores zerados<br/>modo manual"]
+```
+
+### Modos de controle
+
+O `agv-control` decide a cada 0,12 s qual comando vale. O servidor sempre começa no modo Manual:
+
+```mermaid
+stateDiagram-v2
+    state "Autônomo (regras por distância)" as Autonomo
+    [*] --> Manual: servidor inicia
+    Manual --> Autonomo: botão Autônomo
+    Manual --> IA: botão IA (sem modelo treinado, a API responde 409)
+    Autonomo --> Manual: botão Manual ou PARADA DE EMERGÊNCIA
+    Autonomo --> IA: botão IA
+    IA --> Manual: botão Manual ou PARADA DE EMERGÊNCIA
+    IA --> Autonomo: botão Autônomo
+    state Manual {
+        state "Comando do operador" as Operador
+        state "Watchdog envia 0,0" as Watchdog
+        [*] --> Operador
+        Operador --> Watchdog: 2 s sem comando novo
+        Watchdog --> Operador: tecla ou joystick
+    }
+    state IA {
+        state "Rede neural + camada de segurança" as Rede
+        state "Correção do operador" as Correcao
+        [*] --> Rede
+        Rede --> Correcao: tecla ou joystick
+        Correcao --> Rede: soltou, ou 1 s sem reenvio
+    }
+```
+
+A parada de emergência no modo IA também marca a última ação da IA com penalidade para o próximo treino.
+
+### Regras do modo autônomo
+
+`compute_autopilot_command` em `controle.py`, chamado a cada 0,18 s. Velocidade e direção vão de −100 a 100 (% do PWM):
+
+```mermaid
+flowchart TD
+    A["agv-autopilot<br/>modo Autônomo"] --> B{"Kinect conectado e<br/>com distância medida?"}
+    B -- Não --> B1["Para: 0 / 0<br/>(sem-kinect, sem-depth)"]
+    B -- Sim --> C{"Distância à frente<br/>(janela central)"}
+    C -- "menor que 0,35 m" --> D["Gira parado<br/>velocidade 0, direção ±70"]
+    C -- "0,35 a 0,60 m" --> E["Desvio curto<br/>velocidade 18, direção ±65"]
+    C -- "0,60 a 0,95 m" --> F["Desvio suave<br/>velocidade 32, direção ±45"]
+    C -- "0,95 m ou mais" --> G["Livre: velocidade 48<br/>direção = (folga dir − folga esq) × 70,<br/>limitada a ±35; abaixo de 8 vira 0"]
+    D --> H["Vira para o lado mais livre<br/>(direita se a folga direita ≥ esquerda)"]
+    E --> H
+    F --> H
+    H --> I["agv-control envia ao Arduino"]
+    G --> I
 ```
 
 ### Sequência de um comando com o HUD aberto
@@ -884,6 +1065,30 @@ sequenceDiagram
     S->>A: "0,0"
 ```
 
+### Perda de conexão: camadas de segurança
+
+Se o Wi-Fi cair com uma tecla pressionada, quem para o AGV é o servidor; se o próprio notebook travar ou o cabo USB soltar, é o Arduino:
+
+```mermaid
+sequenceDiagram
+    actor O as Operador
+    participant N as Navegador
+    participant S as Servidor (agv-control)
+    participant A as Arduino Uno
+    O->>N: segura W
+    loop a cada 500 ms enquanto W está pressionado
+        N->>S: POST /api/control {speed: 100}
+    end
+    loop a cada 0,12 s
+        S->>A: "255,0"
+    end
+    Note over N: Wi-Fi cai ou o navegador fecha<br/>(se a aba só perde o foco, o painel já manda 0,0)
+    S->>S: 2 s sem comando novo (watchdog)
+    S->>A: "0,0"
+    Note over S,A: Se o notebook travar ou o cabo USB soltar
+    A->>A: 500 ms sem linha nova: emergência, motores freados
+```
+
 ### Ciclo do auto-aprendizado
 
 ```mermaid
@@ -898,6 +1103,87 @@ flowchart LR
     G --> E
 ```
 
+### Quando um exemplo é gravado e quando o treino dispara
+
+`coletar` e `_manutencao` em `aprendizado/servico.py`:
+
+```mermaid
+flowchart TD
+    A["agv-aprendizado<br/>5 vezes por segundo"] --> B{"Gravação ligada<br/>e banco aberto?"}
+    B -- Não --> X["Não grava"]
+    B -- Sim --> C{"Modo atual"}
+    C -- Autônomo --> X
+    C -- Manual --> D{"Comando veio do watchdog,<br/>da parada ou do boot?"}
+    D -- Sim --> X
+    D -- Não --> E{"AGV parado há<br/>mais de 2 s?"}
+    E -- Sim --> X
+    E -- Não --> F["origem = operador<br/>(peso 1)"]
+    C -- IA --> G{"Operador corrigindo?"}
+    G -- Sim --> H["origem = correcao<br/>(peso 2)"]
+    G -- Não --> I["origem = ia<br/>(peso pela recompensa)"]
+    F --> J{"Quadro de profundidade com menos<br/>de 0,6 s e alguma leitura válida?"}
+    H --> J
+    I --> J
+    J -- Não --> X
+    J -- Sim --> K[("amostras: miniatura 24×32<br/>+ comando + origem")]
+    K --> L{"A cada 10 s: 400 amostras novas,<br/>AGV parado há 5 s, fora do modo IA<br/>e nenhum treino rodando?"}
+    L -- Não --> N["Espera mais exemplos<br/>ou o botão Treinar agora"]
+    L -- Sim --> M["Treino em segundo plano<br/>(thread agv-treino)"]
+    N -.-> M
+    M --> O["O modelo novo passa a ser o ativo;<br/>ficam guardados os 10 últimos"]
+```
+
+O treino exige pelo menos 150 exemplos humanos (operador + correção); acima de 150.000 amostras, as mais antigas são apagadas.
+
+### Camada de segurança do modo IA
+
+A rede nunca comanda os motores direto. `decidir` (em `servico.py`) e `aplicar_seguranca` (em `politica.py`):
+
+```mermaid
+flowchart TD
+    A{"Há modelo ativo, Kinect conectado<br/>e quadro com menos de 0,6 s?"} -- Não --> A1["0 / 0"]
+    A -- Sim --> B["Rede 48-32-16-2 sobre a miniatura<br/>da profundidade (+ ruído se Explorar)"]
+    B --> C["Limita a velocidade entre −min(30, máx. da IA)<br/>e a velocidade máxima da IA;<br/>valores abaixo de 6 viram 0"]
+    C --> D{"Distância à frente<br/>conhecida?"}
+    D -- Não --> D1["0 / 0<br/>ia-sem-distancia"]
+    D -- Sim --> E{"Menos de 0,35 m e<br/>indo para a frente?"}
+    E -- Sim --> E1["Velocidade 0, mantém a direção<br/>ia-bloqueio-frente"]
+    E -- Não --> F{"Menos de 0,60 m e<br/>velocidade acima de 25?"}
+    F -- Sim --> F1["Velocidade 25<br/>ia-devagar-perto"]
+    F -- Não --> G["Comando da rede<br/>sem alteração"]
+    E1 --> H["agv-control: vale este comando,<br/>a menos que o operador esteja corrigindo"]
+    F1 --> H
+    G --> H
+```
+
+### Modo IA com correção do operador
+
+```mermaid
+sequenceDiagram
+    actor O as Operador
+    participant N as Navegador
+    participant S as Servidor
+    participant P as agv-autopilot
+    participant C as agv-control
+    participant L as agv-aprendizado
+    participant A as Arduino
+    loop modo IA, sem tecla pressionada
+        P->>P: rede + camada de segurança (a cada 0,18 s)
+        C->>A: comando da IA (fonte "ia")
+        L->>L: grava amostra com origem "ia"
+    end
+    O->>N: segura A (a IA ia raspar à direita)
+    loop a cada 500 ms enquanto A está pressionado
+        N->>S: POST /api/control {mode: "ia", steering: -70}
+        C->>A: comando do operador (fonte "correcao")
+        L->>L: grava amostra com origem "correcao"
+    end
+    O->>N: solta A
+    N->>S: POST /api/control {speed: 0, steering: 0}
+    C->>A: volta ao comando da IA
+    Note over L: No próximo treino, a ação da IA logo antes<br/>da correção perde recompensa e pesa menos
+```
+
 ### Pipeline do auto-mapeamento
 
 ```mermaid
@@ -910,6 +1196,42 @@ flowchart LR
     E --> G["Soma a varredura ao mapa<br/>(log-odds, células de 5 cm)"]
     G --> H["Página Mapa<br/>PNG + trajeto + AGV"]
     G --> I[("logs/mapas.db<br/>ao salvar")]
+```
+
+### Cadastro e busca de um rosto
+
+```mermaid
+sequenceDiagram
+    actor O as Operador
+    participant N as Navegador
+    participant S as Servidor (rotas.py)
+    participant R as visao/rostos.py
+    participant D as logs/ (encodings.pkl e faces/)
+    participant Z as agv-zed e agv-zed-face
+    O->>N: nome + foto em Configurações, Registrar rosto
+    N->>S: POST /api/face/register_face (multipart)
+    alt foto maior que 10 MB
+        S-->>N: 413
+    else foto dentro do limite
+        S->>R: register_face(nome, foto)
+        R->>R: valida nome e imagem e procura um rosto (HOG)
+        alt sem nome, imagem inválida ou nenhum rosto
+            R-->>N: 400 (name_required, invalid_image, no_face_detected...)
+        else banco de rostos existe mas está ilegível
+            R-->>N: 500 face_database_unreadable (banco preservado)
+        else cadastro aceito
+            R->>D: salva a foto e o descritor de 128 dimensões
+            R->>R: recarrega o banco e seleciona a pessoa
+            R-->>N: 200 + estado do reconhecimento
+        end
+    end
+    loop a cada 0,7 s
+        Z->>R: quadro da ZED (metade esquerda)
+        R->>R: compara com a pessoa escolhida (limiar + margem anti-impostor)
+        R-->>Z: posição do rosto quando é ela
+    end
+    Z-->>N: GET /zed com caixa e nome desenhados
+    N-->>O: bipe de aviso
 ```
 
 ---
@@ -1058,7 +1380,23 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `sqlite_util.py` | 87% | `hardware/zed.py` | 55% |
 | | | **Total** | **90%** |
 
-O CI também **monta a imagem Docker** e **gera o executável do PyInstaller** num Ubuntu 24.04 limpo, seguindo o passo B da seção 15, e confere que os dois sobem e respondem `/api/status`.
+O CI também **monta a imagem Docker** e **gera o executável do PyInstaller** num Ubuntu 24.04 limpo, seguindo o passo B da seção 15, e confere que os dois sobem e respondem `/api/status`. Os três trabalhos rodam em paralelo a cada push e pull request:
+
+```mermaid
+flowchart LR
+    subgraph T["Testes e lint"]
+        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["225 testes com<br/>cobertura mínima de 80%"]
+    end
+    subgraph D["Imagem Docker"]
+        D1["docker build"] --> D2["Driver do Kinect<br/>importa na imagem"] --> D3["Servidor responde<br/>sem hardware"]
+    end
+    subgraph E["Instalação no Ubuntu e executável"]
+        E1["Passo B do README<br/>numa máquina limpa"] --> E2["Driver do Kinect<br/>e NumPy juntos"] --> E3["PyInstaller"] --> E4["Executável responde<br/>sem hardware"]
+    end
+    P(["push ou pull request<br/>(GitHub Actions, Ubuntu 24.04)"]) --> T1
+    P --> D1
+    P --> E1
+```
 
 ### 22.2 Testes do painel sem hardware
 
@@ -1137,7 +1475,7 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 - **1ª build lenta:** o `face-recognition` compila o dlib do código-fonte.
 - **RTT não é registrado:** a latência só aparece como aviso na tela; a pesquisa precisa dela em log (RF37).
 - **Distância pelo pixel mais próximo:** cada janela usa o ponto mais próximo; um pixel isolado com ruído pode gerar um alerta falso. Ainda não há filtro (ex.: percentil ou mediana).
-- **O CI não tem hardware:** Kinect, ZED e Arduino são simulados; o funcionamento real só é validado no AGV (seção 22.3). A captura da ZED por FFmpeg é a parte menos coberta (`zed.py`, 55%).
+- **O CI não tem hardware:** Kinect, ZED e Arduino são simulados; o funcionamento real só é validado no AGV (seção 22.4). A captura da ZED por FFmpeg é a parte menos coberta (`zed.py`, 55%).
 - **Os testes funcionais do painel não rodam no CI:** o JavaScript é verificado por scripts no navegador *headless* (61 + 26 verificações, seção 22.2), executados durante o desenvolvimento; o CI só confere a sintaxe dos módulos.
 
 ---
@@ -1166,6 +1504,21 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 
 ## 27. Cronograma Técnico
 
+Linha do tempo montada a partir das datas dos commits:
+
+```mermaid
+timeline
+    title Evolução do AGV em 2026
+    abril : Upload inicial e servidor web (12/04) : v1.0.2 (13/04)
+    maio : v1.0.3 com Kinect, ZED, Arduino e reconhecimento facial
+    julho : v1.0.4 com o firmware reorganizado e a ré
+    agosto : HUD em tela cheia (PR 1) : Organização do repositório e Docker (PR 2)
+    14 de outubro : Limpeza e correções : README no modelo da disciplina : Modularização do código
+    15 de outubro : Testes automatizados e CI : Painel novo com menu lateral : Auto-aprendizado
+    16 de outubro : Página Aprendizado : Auto-mapeamento e página Mapa
+    Próximos passos : Validar IA e mapa no AGV real : Sobreposições de RA registradas : Experimento com operadores
+```
+
 | Atividade | Período | Responsável | Status |
 |---|---|---|---|
 | Upload inicial do projeto e servidor web | abr/2026 | Kauan | ✅ |
@@ -1190,13 +1543,62 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 
 ## 28. Controle de Versão
 
-- **Branches e Pull Requests:** as mudanças entram por branches de funcionalidade (`feature/hud-fullscreen-viewer`, `chore/organizar-repositorio`, `chore/limpeza-codigo-morto`, `fix/distancia-profundidade`, `fix/controle-manual-watchdog`, `docs/readme-modelo-upx`, `refactor/modularizar`, `chore/qualidade-codigo`, `feat/front-abas`, `feat/auto-aprendizado`, `feat/auto-mapeamento`) mescladas na `main` por PR.
+- **Branches:** cada assunto é feito numa branch própria (`feature/`, `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`), revisado e só então mesclado na `main`. As duas primeiras entraram por Pull Request (#1 e #2); as seguintes, por merge depois da revisão e com o CI verde.
 - **Commits:** seguem o padrão *Conventional Commits*:
 
 ```text
-feat: visualizador HUD em tela cheia para o RGB do Kinect
-chore: organiza repositorio e corrige build Docker
-docs: reformula README no padrao universal
+feat(mapeamento): odometria visual pelo Kinect e mapa de ocupacao
+fix: AGV parava ao segurar uma tecla por mais de 2 s no modo manual
+test: cobre controle, API, serial, rostos, captura e runtime (28% -> 81%)
+ci: testes, lint, imagem Docker e executavel no GitHub Actions
+docs: reescreve README no modelo da disciplina UPX e cria pasta docs/
+```
+
+Principais branches e a ordem em que entraram na `main` (os marcos v1.0.x foram commits diretos):
+
+```mermaid
+gitGraph
+    commit id: "upload inicial"
+    commit id: "v1.0.2"
+    commit id: "v1.0.3"
+    commit id: "v1.0.4 + ré"
+    branch feature/hud-fullscreen-viewer
+    commit id: "HUD em tela cheia"
+    checkout main
+    merge feature/hud-fullscreen-viewer id: "PR #1"
+    branch chore/organizar-repositorio
+    commit id: "Docker e LICENSE"
+    checkout main
+    merge chore/organizar-repositorio id: "PR #2"
+    branch fix/distancia-profundidade
+    commit id: "ponto mais próximo"
+    checkout main
+    merge fix/distancia-profundidade
+    branch fix/controle-manual-watchdog
+    commit id: "tecla segurada"
+    checkout main
+    merge fix/controle-manual-watchdog
+    branch docs/readme-modelo-upx
+    commit id: "README no modelo UPX"
+    checkout main
+    merge docs/readme-modelo-upx
+    branch refactor/modularizar
+    commit id: "divide em módulos"
+    checkout main
+    merge refactor/modularizar
+    branch chore/qualidade-codigo
+    commit id: "testes e CI"
+    branch feat/front-abas
+    commit id: "painel novo"
+    merge chore/qualidade-codigo
+    branch feat/auto-aprendizado
+    commit id: "IA por imitação e recompensa"
+    branch feat/auto-mapeamento
+    commit id: "odometria visual e mapa"
+    branch docs/revisao-entrega
+    commit id: "revisão da documentação"
+    checkout main
+    merge docs/revisao-entrega id: "entrega UPX"
 ```
 
 - **Integração contínua:** o GitHub Actions roda lint, testes (cobertura mínima de 80%), build da imagem Docker e do executável a cada push e pull request; o selo no topo do README mostra o resultado da `main`.

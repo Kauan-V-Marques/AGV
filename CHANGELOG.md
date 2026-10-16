@@ -61,6 +61,7 @@ Todas as mudanças relevantes do projeto. Os marcos `v1.0.x` foram registrados n
 - Registro das limitações conhecidas, incluindo a análise da escolha do ponto nas janelas de profundidade de 11 bits.
 - Registro da troca do computador embarcado: a Raspberry Pi 5 original queimou e o AGV passou a usar um notebook Linux.
 - README atualizado para o painel novo, o auto-aprendizado e o auto-mapeamento: funcionalidades RF20–RF32, arquitetura (diagrama redesenhado), API, variáveis, uso passo a passo, fluxos, capturas novas, testes (225) e a validação da odometria em simulação.
+- Revisão para a entrega: 14 diagramas novos feitos a partir do código (ligações físicas, inicialização, ciclo do firmware, bancos SQLite, modos de controle, regras do autônomo, perda de conexão, gravação e treino da IA, camada de segurança da IA, correção do operador, cadastro de rosto, CI, linha do tempo e branches) e correções pontuais (referência de seção, tempos do mapeamento, threads no fluxo principal, histórico de branches).
 
 ## 2026-08-31 — Organização e HUD
 
