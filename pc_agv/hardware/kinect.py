@@ -32,6 +32,9 @@ try:
 except Exception:
     freenect = None
 
+# Mensagem curta: o quadro de espera do video mostra so 44 caracteres.
+SEM_DRIVER = "driver freenect nao instalado"
+
 # KINECT_STABILIZATION_ENABLED vem do config e pode ser alterado em tempo de
 # execucao por set_kinect_stabilization (rebind local deste modulo).
 
@@ -125,7 +128,7 @@ def get_kinect_stabilization() -> bool:
 
 def _do_tilt_body(dev) -> None:
     """Ajusta o tilt do Kinect para manter o frame mais nivelado."""
-    global _tilt_last_set_at, _tilt_last_target, _tilt_manual_until, _tilt_manual_target, _tilt_pitch_filtered
+    global _tilt_last_set_at, _tilt_last_target, _tilt_pitch_filtered
 
     stabilization_enabled = get_kinect_stabilization()
     # Mesmo com estabilizacao OFF, respeita comando manual recente de tilt.
@@ -188,7 +191,7 @@ def _do_tilt_body(dev) -> None:
 
 def _kinect_device_available() -> tuple[bool, Optional[str]]:
     if freenect is None:
-        return False, "python3-freenect nao disponivel no sistema"
+        return False, SEM_DRIVER
 
     ctx = None
     try:
@@ -226,7 +229,7 @@ def capture_loop() -> None:
         while not estado.stop_event.is_set():
             with estado.state_lock:
                 estado.state["kinect_ok"] = False
-                estado.state["kinect_error"] = "python3-freenect nao disponivel no sistema"
+                estado.state["kinect_error"] = SEM_DRIVER
             estado.stop_event.wait(1.0)
         return
 
@@ -277,6 +280,7 @@ def capture_loop() -> None:
                 with estado.state_lock:
                     estado.state["depth"] = depth_array
                     estado.state["depth_mm"] = is_mm
+                    estado.state["depth_at"] = util.now()
                     estado.state["distance_m"] = distance
                     estado.state["left_clearance_m"] = left
                     estado.state["center_clearance_m"] = center

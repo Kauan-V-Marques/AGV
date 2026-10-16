@@ -262,8 +262,6 @@ def speed_steering_to_payload(speed: int, steering: int) -> tuple[int, int]:
 
 
 def send_to_arduino(speed: int, steering: int, mode: str, source: str) -> bool:
-    global _arduino_serial
-
     if not _arduino_state["enabled"]:
         with _arduino_lock:
             _arduino_state["last_error"] = "serial desativada por ambiente"

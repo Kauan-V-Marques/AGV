@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="860" viewBox="0 0 1200 860" font-family="Segoe UI, Helvetica, Arial, sans-serif">
   <title>Arquitetura do sistema AGV</title>
   <defs>
     <marker id="seta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
@@ -6,87 +6,110 @@
     </marker>
   </defs>
 
-  <rect width="1200" height="720" fill="#ffffff"/>
+  <rect width="1200" height="860" fill="#ffffff"/>
   <text x="600" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">Arquitetura do sistema — AGV teleoperado</text>
 
   <!-- ===== Coluna 1: Operador ===== -->
-  <rect x="20" y="60" width="290" height="640" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <rect x="20" y="60" width="290" height="780" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
   <text x="165" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#1e3a8a">Operador remoto</text>
   <text x="165" y="108" text-anchor="middle" font-size="13" fill="#1e40af">navegador no PC ou no celular</text>
 
-  <rect x="40" y="128" width="250" height="300" rx="10" fill="#ffffff" stroke="#60a5fa"/>
+  <rect x="40" y="128" width="250" height="400" rx="10" fill="#ffffff" stroke="#60a5fa"/>
   <text x="165" y="152" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Painel web (web/static/)</text>
-  <text x="56" y="180" font-size="13" fill="#0f172a">• Vídeo RGB do Kinect</text>
-  <text x="56" y="202" font-size="13" fill="#0f172a">• HUD em tela cheia</text>
-  <text x="70" y="220" font-size="12" fill="#475569">telemetria fixa na tela + PiP</text>
-  <text x="56" y="244" font-size="13" fill="#0f172a">• Mapa de profundidade</text>
-  <text x="56" y="266" font-size="13" fill="#0f172a">• Webcam ZED + rosto</text>
-  <text x="56" y="288" font-size="13" fill="#0f172a">• Modo manual / autônomo</text>
-  <text x="56" y="310" font-size="13" fill="#0f172a">• WASD, setas ou joystick</text>
-  <text x="56" y="332" font-size="13" fill="#0f172a">• Parada total</text>
-  <text x="56" y="354" font-size="13" fill="#0f172a">• Tilt e estabilização</text>
-  <text x="56" y="376" font-size="13" fill="#0f172a">• Limite de velocidade</text>
-  <text x="56" y="398" font-size="13" fill="#0f172a">• Aviso de sinal fraco (RTT)</text>
+  <text x="56" y="180" font-size="13" fill="#0f172a">• Menu lateral com seções:</text>
+  <text x="70" y="198" font-size="12" fill="#475569">Painel · Câmeras · Telemetria ·</text>
+  <text x="70" y="214" font-size="12" fill="#475569">Aprendizado · Mapa · Configurações</text>
+  <text x="56" y="240" font-size="13" fill="#0f172a">• Vídeos RGB, profundidade e ZED</text>
+  <text x="56" y="262" font-size="13" fill="#0f172a">• HUD em tela cheia</text>
+  <text x="70" y="280" font-size="12" fill="#475569">telemetria fixa na tela + PiP</text>
+  <text x="56" y="304" font-size="13" fill="#0f172a">• Modo manual / autônomo / IA</text>
+  <text x="56" y="326" font-size="13" fill="#0f172a">• WASD, setas ou joystick</text>
+  <text x="56" y="348" font-size="13" fill="#0f172a">• Parada de emergência</text>
+  <text x="56" y="370" font-size="13" fill="#0f172a">• Proximidade e gráfico de 60 s</text>
+  <text x="56" y="392" font-size="13" fill="#0f172a">• Tilt, estabilização, velocidade</text>
+  <text x="56" y="414" font-size="13" fill="#0f172a">• Rostos: cadastro e busca na ZED</text>
+  <text x="56" y="436" font-size="13" fill="#0f172a">• Treino e modelos da IA</text>
+  <text x="56" y="458" font-size="13" fill="#0f172a">• Mapa ao vivo e mapas salvos</text>
+  <text x="56" y="480" font-size="13" fill="#0f172a">• Aviso de sinal fraco (RTT)</text>
+  <text x="56" y="506" font-size="12" font-style="italic" fill="#1e40af">módulos ES nativos, sem build</text>
 
-  <rect x="40" y="450" width="250" height="230" rx="10" fill="#ffffff" stroke="#60a5fa"/>
-  <text x="165" y="474" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Comunicação com o AGV</text>
-  <text x="56" y="502" font-size="13" fill="#0f172a">• Vídeos em MJPEG (&lt;img&gt;)</text>
-  <text x="70" y="520" font-size="12" fill="#475569">RGB 6 fps · profundidade 4 fps</text>
-  <text x="56" y="544" font-size="13" fill="#0f172a">• Telemetria por polling</text>
-  <text x="70" y="562" font-size="12" fill="#475569">0,5 s a 1,8 s conforme o RTT</text>
-  <text x="56" y="586" font-size="13" fill="#0f172a">• Comando manual por POST</text>
-  <text x="70" y="604" font-size="12" fill="#475569">velocidade e direção −100..100</text>
-  <text x="56" y="628" font-size="13" fill="#0f172a">• Parada total</text>
-  <text x="70" y="646" font-size="12" fill="#475569">zera motores e volta ao manual</text>
+  <rect x="40" y="546" width="250" height="274" rx="10" fill="#ffffff" stroke="#60a5fa"/>
+  <text x="165" y="570" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Comunicação com o AGV</text>
+  <text x="56" y="598" font-size="13" fill="#0f172a">• Vídeos em MJPEG (&lt;img&gt;)</text>
+  <text x="70" y="616" font-size="12" fill="#475569">RGB 6 fps · profundidade 4 fps</text>
+  <text x="56" y="640" font-size="13" fill="#0f172a">• Telemetria por polling</text>
+  <text x="70" y="658" font-size="12" fill="#475569">0,5 s a 1,8 s conforme o RTT</text>
+  <text x="56" y="682" font-size="13" fill="#0f172a">• Comandos por POST</text>
+  <text x="70" y="700" font-size="12" fill="#475569">velocidade e direção −100..100;</text>
+  <text x="70" y="716" font-size="12" fill="#475569">no modo IA valem como correção</text>
+  <text x="56" y="740" font-size="13" fill="#0f172a">• Mapa: PNG + JSON a cada 0,7 s</text>
+  <text x="70" y="758" font-size="12" fill="#475569">só com a página do mapa aberta</text>
+  <text x="56" y="782" font-size="13" fill="#0f172a">• Parada de emergência</text>
+  <text x="70" y="800" font-size="12" fill="#475569">zera motores e volta ao manual</text>
 
   <!-- ===== Coluna 2: PC do AGV ===== -->
-  <rect x="370" y="60" width="470" height="640" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <rect x="370" y="60" width="470" height="780" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
   <text x="605" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#14532d">Notebook embarcado no AGV (Linux)</text>
-  <text x="605" y="108" text-anchor="middle" font-size="13" fill="#166534">launch_production.py → iniciar_sistema.py → runtime.py</text>
+  <text x="605" y="108" text-anchor="middle" font-size="13" fill="#166534">launch_production.py → iniciar_sistema.py → runtime.py (7 threads)</text>
 
-  <rect x="390" y="128" width="430" height="150" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <rect x="390" y="128" width="430" height="172" rx="10" fill="#ffffff" stroke="#4ade80"/>
   <text x="605" y="152" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Servidor Flask — pc_agv/web/rotas.py</text>
-  <text x="406" y="180" font-size="13" fill="#0f172a">MJPEG: /video · /depth_map · /zed</text>
-  <text x="406" y="202" font-size="13" fill="#0f172a">JSON: /api/status (telemetria) · /api/access_link</text>
-  <text x="406" y="224" font-size="13" fill="#0f172a">Comandos: /api/control · /api/stop · /api/settings</text>
-  <text x="406" y="246" font-size="13" fill="#0f172a">Kinect: /api/kinect/reconnect · tilt · stabilization</text>
-  <text x="406" y="268" font-size="13" fill="#0f172a">Rostos: /api/face/status · register_face · select</text>
+  <text x="406" y="178" font-size="13" fill="#0f172a">MJPEG: /video · /depth_map · /zed</text>
+  <text x="406" y="198" font-size="13" fill="#0f172a">JSON: /api/status (telemetria) · /api/access_link</text>
+  <text x="406" y="218" font-size="13" fill="#0f172a">Comandos: /api/control · /api/stop · /api/settings</text>
+  <text x="406" y="238" font-size="13" fill="#0f172a">Kinect: /api/kinect/reconnect · tilt · stabilization</text>
+  <text x="406" y="258" font-size="13" fill="#0f172a">Rostos: /api/face/status · register_face · select</text>
+  <text x="406" y="278" font-size="13" fill="#0f172a">IA: /api/ia/*   ·   Mapa: /api/mapa/*</text>
 
-  <rect x="390" y="296" width="430" height="44" rx="10" fill="#dcfce7" stroke="#4ade80"/>
-  <text x="605" y="323" text-anchor="middle" font-size="14" font-weight="600" fill="#14532d">estado.py — estado compartilhado com locks</text>
+  <rect x="390" y="314" width="430" height="40" rx="10" fill="#dcfce7" stroke="#4ade80"/>
+  <text x="605" y="339" text-anchor="middle" font-size="14" font-weight="600" fill="#14532d">estado.py — estado compartilhado com locks</text>
 
-  <rect x="390" y="358" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="492" y="380" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">hardware/kinect.py</text>
-  <text x="402" y="402" font-size="12" fill="#334155">captura RGB + profundidade</text>
-  <text x="402" y="420" font-size="12" fill="#334155">distâncias esq/centro/dir</text>
-  <text x="402" y="438" font-size="12" fill="#334155">estabilização do tilt</text>
+  <rect x="390" y="372" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="492" y="394" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">hardware/kinect.py</text>
+  <text x="402" y="416" font-size="12" fill="#334155">captura RGB + profundidade</text>
+  <text x="402" y="434" font-size="12" fill="#334155">distâncias esq/centro/dir</text>
+  <text x="402" y="452" font-size="12" fill="#334155">estabilização do tilt</text>
 
-  <rect x="615" y="358" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="717" y="380" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">zed.py + rostos.py</text>
-  <text x="627" y="402" font-size="12" fill="#334155">captura OpenCV ou FFmpeg</text>
-  <text x="627" y="420" font-size="12" fill="#334155">face_recognition (HOG)</text>
-  <text x="627" y="438" font-size="12" fill="#334155">caixa + nome sobre o vídeo</text>
+  <rect x="615" y="372" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="717" y="394" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">zed.py + rostos.py</text>
+  <text x="627" y="416" font-size="12" fill="#334155">captura OpenCV ou FFmpeg</text>
+  <text x="627" y="434" font-size="12" fill="#334155">face_recognition (HOG)</text>
+  <text x="627" y="452" font-size="12" fill="#334155">caixa + nome sobre o vídeo</text>
 
-  <rect x="390" y="472" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="492" y="494" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">controle.py · autônomo</text>
-  <text x="402" y="516" font-size="12" fill="#334155">regras por distância</text>
-  <text x="402" y="534" font-size="12" fill="#334155">segue / desvia / gira</text>
-  <text x="402" y="552" font-size="12" fill="#334155">ciclo de 0,18 s</text>
+  <rect x="390" y="484" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="492" y="506" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">controle.py · decisão</text>
+  <text x="402" y="528" font-size="12" fill="#334155">autônomo: regras por distância</text>
+  <text x="402" y="546" font-size="12" fill="#334155">IA: rede treinada + segurança</text>
+  <text x="402" y="564" font-size="12" fill="#334155">ciclo de 0,18 s</text>
 
-  <rect x="615" y="472" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="717" y="494" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">controle.py · envio</text>
-  <text x="627" y="516" font-size="12" fill="#334155">manual ou autônomo → serial</text>
-  <text x="627" y="534" font-size="12" fill="#334155">watchdog de 2 s (manual)</text>
-  <text x="627" y="552" font-size="12" fill="#334155">ciclo de 0,12 s</text>
+  <rect x="615" y="484" width="205" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="717" y="506" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">controle.py · envio</text>
+  <text x="627" y="528" font-size="12" fill="#334155">manual, autônomo ou IA → serial</text>
+  <text x="627" y="546" font-size="12" fill="#334155">correção do operador (IA)</text>
+  <text x="627" y="564" font-size="12" fill="#334155">watchdog 2 s · ciclo 0,12 s</text>
 
-  <rect x="390" y="586" width="430" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="605" y="608" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">Execução</text>
-  <text x="406" y="630" font-size="12" fill="#334155">Docker (python:3.11-slim-bookworm) com USB e serial repassados</text>
-  <text x="406" y="650" font-size="12" fill="#334155">ou Python direto no Linux · ou executável único (PyInstaller)</text>
-  <text x="406" y="670" font-size="12" fill="#334155">logs/ guarda fotos e encodings de rosto (fora do Git)</text>
+  <rect x="390" y="596" width="205" height="112" rx="10" fill="#faf5ff" stroke="#a855f7"/>
+  <text x="492" y="618" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">aprendizado/</text>
+  <text x="402" y="640" font-size="12" fill="#334155">grava exemplos (5 por segundo)</text>
+  <text x="402" y="658" font-size="12" fill="#334155">rede neural NumPy 48-32-16-2</text>
+  <text x="402" y="676" font-size="12" fill="#334155">imitação + recompensa</text>
+  <text x="402" y="696" font-size="12" font-style="italic" fill="#7e22ce">logs/aprendizado.db</text>
+
+  <rect x="615" y="596" width="205" height="112" rx="10" fill="#f0fdfa" stroke="#14b8a6"/>
+  <text x="717" y="618" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">mapeamento/</text>
+  <text x="627" y="640" font-size="12" fill="#334155">varredura 2D da profundidade</text>
+  <text x="627" y="658" font-size="12" fill="#334155">odometria visual (ICP)</text>
+  <text x="627" y="676" font-size="12" fill="#334155">mapa de ocupação de 5 cm</text>
+  <text x="627" y="696" font-size="12" font-style="italic" fill="#0f766e">logs/mapas.db</text>
+
+  <rect x="390" y="724" width="430" height="96" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="605" y="746" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">Execução</text>
+  <text x="406" y="768" font-size="12" fill="#334155">Docker (python:3.11-slim-bookworm) com USB e serial repassados</text>
+  <text x="406" y="788" font-size="12" fill="#334155">ou Python direto no Linux · ou executável único (PyInstaller)</text>
+  <text x="406" y="808" font-size="12" fill="#334155">logs/ guarda rostos, aprendizado e mapas (fora do Git)</text>
 
   <!-- ===== Coluna 3: Hardware ===== -->
-  <rect x="900" y="60" width="280" height="640" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>
+  <rect x="900" y="60" width="280" height="780" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>
   <text x="1040" y="88" text-anchor="middle" font-size="17" font-weight="700" fill="#7c2d12">Hardware embarcado</text>
 
   <rect x="920" y="110" width="240" height="140" rx="10" fill="#ffffff" stroke="#fb923c"/>
@@ -96,23 +119,23 @@
   <text x="934" y="200" font-size="12" fill="#334155">motor de tilt + acelerômetro</text>
   <text x="934" y="226" font-size="12" font-style="italic" fill="#9a3412">USB · libfreenect</text>
 
-  <rect x="920" y="270" width="240" height="100" rx="10" fill="#ffffff" stroke="#fb923c"/>
-  <text x="1040" y="294" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Câmera ZED</text>
-  <text x="934" y="320" font-size="12" fill="#334155">vídeo da traseira do AGV</text>
-  <text x="934" y="346" font-size="12" font-style="italic" fill="#9a3412">USB · V4L2 (/dev/video*)</text>
+  <rect x="920" y="290" width="240" height="100" rx="10" fill="#ffffff" stroke="#fb923c"/>
+  <text x="1040" y="314" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Câmera ZED</text>
+  <text x="934" y="340" font-size="12" fill="#334155">vídeo da traseira do AGV</text>
+  <text x="934" y="366" font-size="12" font-style="italic" fill="#9a3412">USB · V4L2 (/dev/video*)</text>
 
-  <rect x="920" y="390" width="240" height="120" rx="10" fill="#ffffff" stroke="#fb923c"/>
-  <text x="1040" y="414" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Arduino Uno</text>
-  <text x="934" y="440" font-size="12" fill="#334155">recebe "aceleração,direção"</text>
-  <text x="934" y="460" font-size="12" fill="#334155">rampa, filtro, timeout 500 ms</text>
-  <text x="934" y="486" font-size="12" font-style="italic" fill="#9a3412">USB serial · 9600 baud</text>
+  <rect x="920" y="460" width="240" height="120" rx="10" fill="#ffffff" stroke="#fb923c"/>
+  <text x="1040" y="484" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Arduino Uno</text>
+  <text x="934" y="510" font-size="12" fill="#334155">recebe "aceleração,direção"</text>
+  <text x="934" y="530" font-size="12" fill="#334155">rampa, filtro, timeout 500 ms</text>
+  <text x="934" y="556" font-size="12" font-style="italic" fill="#9a3412">USB serial · 9600 baud</text>
 
-  <rect x="920" y="550" width="240" height="130" rx="10" fill="#ffffff" stroke="#fb923c"/>
-  <text x="1040" y="574" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Tração</text>
-  <text x="934" y="600" font-size="12" fill="#334155">2 controladores BLDC</text>
-  <text x="934" y="620" font-size="12" fill="#334155">2 motores BLDC</text>
-  <text x="934" y="640" font-size="12" fill="#334155">(direito e esquerdo)</text>
-  <text x="934" y="664" font-size="12" font-style="italic" fill="#9a3412">PWM · DIR · BRAKE</text>
+  <rect x="920" y="640" width="240" height="130" rx="10" fill="#ffffff" stroke="#fb923c"/>
+  <text x="1040" y="664" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Tração</text>
+  <text x="934" y="690" font-size="12" fill="#334155">2 controladores BLDC</text>
+  <text x="934" y="710" font-size="12" fill="#334155">2 motores BLDC</text>
+  <text x="934" y="730" font-size="12" fill="#334155">(direito e esquerdo)</text>
+  <text x="934" y="754" font-size="12" font-style="italic" fill="#9a3412">PWM · DIR · BRAKE</text>
 
   <!-- ===== Conexões ===== -->
   <line x1="290" y1="200" x2="388" y2="200" stroke="#334155" stroke-width="2" marker-start="url(#seta)" marker-end="url(#seta)"/>
@@ -120,8 +143,8 @@
   <text x="339" y="222" text-anchor="middle" font-size="11" fill="#475569">Wi-Fi/LAN</text>
   <text x="339" y="238" text-anchor="middle" font-size="11" fill="#475569">porta 5000</text>
 
-  <polyline points="918,200 862,200 862,349 492,349 492,356" fill="none" stroke="#334155" stroke-width="2" marker-start="url(#seta)" marker-end="url(#seta)"/>
-  <polyline points="918,320 880,320 880,406 822,406" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#seta)"/>
-  <line x1="822" y1="520" x2="918" y2="450" stroke="#334155" stroke-width="2" marker-start="url(#seta)" marker-end="url(#seta)"/>
-  <line x1="1040" y1="512" x2="1040" y2="548" stroke="#334155" stroke-width="2" marker-end="url(#seta)"/>
+  <polyline points="918,200 862,200 862,362 492,362 492,370" fill="none" stroke="#334155" stroke-width="2" marker-start="url(#seta)" marker-end="url(#seta)"/>
+  <polyline points="918,340 880,340 880,420 822,420" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#seta)"/>
+  <line x1="822" y1="532" x2="918" y2="520" stroke="#334155" stroke-width="2" marker-start="url(#seta)" marker-end="url(#seta)"/>
+  <line x1="1040" y1="582" x2="1040" y2="638" stroke="#334155" stroke-width="2" marker-end="url(#seta)"/>
 </svg>

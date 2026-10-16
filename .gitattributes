@@ -1,0 +1,2 @@
+# Scripts shell sempre com LF: com a quebra de linha do Windows (CRLF) o bash do Linux/Docker falha.
+*.sh text eol=lf

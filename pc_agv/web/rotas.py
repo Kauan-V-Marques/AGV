@@ -1,5 +1,7 @@
 """Aplicacao Flask: painel, streams MJPEG e API REST do agv."""
 
+import math
+import mimetypes
 import os
 import socket
 
@@ -8,23 +10,37 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 from pc_agv.config import (
     DEFAULT_PORT,
     DEPTH_FPS,
+    MAX_UPLOAD_MB,
     VIDEO_FPS,
     ZED_FPS,
 )
 from pc_agv import estado
 from pc_agv import telemetria
 from pc_agv import util
+from pc_agv.aprendizado import servico as aprendizado
 from pc_agv.hardware import arduino
 from pc_agv.hardware import kinect
+from pc_agv.mapeamento import servico as mapeamento
 from pc_agv.visao import rostos
 from pc_agv.web import mjpeg
 
+
+# O painel usa modulos ES: o navegador so os executa com o tipo JavaScript correto,
+# e no Windows o mimetypes pode herdar outro tipo do registro do sistema.
+mimetypes.add_type("text/javascript", ".js")
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 # Sempre revalida painel.css/painel.js para nao servir versao antiga apos atualizar o agv.
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+# Evita que um upload enorme esgote a memoria do notebook do agv.
+app.config["MAX_CONTENT_LENGTH"] = int(MAX_UPLOAD_MB * 1024 * 1024)
+
+
+@app.errorhandler(413)
+def route_file_too_large(_error):
+    return jsonify({"ok": False, "error": "file_too_large", "max_mb": MAX_UPLOAD_MB}), 413
 
 
 
@@ -122,7 +138,12 @@ def route_kinect_reconnect():
 @app.route("/api/kinect/tilt", methods=["POST"])
 def route_kinect_tilt():
     payload = request.get_json(silent=True) or {}
-    angle = float(payload.get("angle", 0.0))
+    try:
+        angle = float(payload.get("angle", 0.0))
+    except (TypeError, ValueError):
+        angle = math.nan
+    if not math.isfinite(angle):
+        return jsonify({"ok": False, "error": "invalid_angle"}), 400
     ok, message, applied = kinect.command_kinect_tilt(angle)
     return jsonify({"ok": ok, "message": message, "tilt_target_deg": applied})
 
@@ -161,8 +182,10 @@ def route_face_select():
 def route_control():
     payload = request.get_json(silent=True) or {}
     mode = str(payload.get("mode", "manual")).strip().lower()
-    if mode not in ("manual", "auto"):
+    if mode not in estado.MODOS:
         mode = "manual"
+    if mode == "ia" and not aprendizado.tem_modelo():
+        return jsonify({"ok": False, "error": "sem_modelo"}), 409
 
     try:
         speed = int(payload.get("speed", 0))
@@ -209,6 +232,7 @@ def route_settings():
 def route_stop():
     arduino.send_to_arduino(0, 0, "manual", "stop")
     with estado.control_lock:
+        modo_anterior = estado.control_state["mode"]
         estado.control_state["mode"] = "manual"
         estado.control_state["manual_speed"] = 0
         estado.control_state["manual_steering"] = 0
@@ -218,7 +242,141 @@ def route_stop():
         estado.control_state["last_source"] = "stop"
         estado.control_state["arduino_sent"] = True
         estado.control_state["arduino_error"] = None
+    if modo_anterior == "ia":
+        # A IA levou o operador a apertar a parada: isso entra como penalidade no treino.
+        aprendizado.registrar_parada()
 
     resp = jsonify({"ok": True})
     resp.headers["Connection"] = "close"
     return resp
+
+
+# ── Auto-aprendizado ────────────────────────────────────────────────
+_STATUS_ERRO_IA = {
+    "banco_indisponivel": 503,
+    "treino_em_andamento": 409,
+    "amostras_insuficientes": 409,
+    "modelo_inexistente": 404,
+    "modelo_incompativel": 409,
+}
+
+
+def _erro_ia(codigo: str):
+    return jsonify({"ok": False, "error": codigo}), _STATUS_ERRO_IA.get(codigo, 400)
+
+
+@app.route("/api/ia/status")
+def route_ia_status():
+    return jsonify({"ok": True, "ia": aprendizado.status_snapshot()})
+
+
+@app.route("/api/ia/config", methods=["POST"])
+def route_ia_config():
+    ok, resultado = aprendizado.configurar(request.get_json(silent=True) or {})
+    if not ok:
+        return _erro_ia(resultado)
+    return jsonify({"ok": True, "preferencias": resultado})
+
+
+@app.route("/api/ia/treinar", methods=["POST"])
+def route_ia_treinar():
+    ok, resultado = aprendizado.iniciar_treino()
+    if not ok:
+        return _erro_ia(resultado)
+    return jsonify({"ok": True, "treino": resultado}), 202
+
+
+@app.route("/api/ia/modelos")
+def route_ia_modelos():
+    return jsonify({"ok": True, "modelos": aprendizado.listar_modelos()})
+
+
+@app.route("/api/ia/modelos/<int:modelo_id>/ativar", methods=["POST"])
+def route_ia_ativar_modelo(modelo_id: int):
+    ok, resultado = aprendizado.ativar_modelo(modelo_id)
+    if not ok:
+        return _erro_ia(resultado)
+    return jsonify({"ok": True, "modelo": resultado})
+
+
+@app.route("/api/ia/apagar", methods=["POST"])
+def route_ia_apagar():
+    payload = request.get_json(silent=True) or {}
+    if payload.get("confirmar") is not True:
+        return _erro_ia("confirmacao_necessaria")
+    ok, resultado = aprendizado.apagar(str(payload.get("alvo", "")))
+    if not ok:
+        return _erro_ia(resultado)
+    return jsonify({"ok": True, "apagado": resultado})
+
+
+# ── Auto-mapeamento ─────────────────────────────────────────────────
+_STATUS_ERRO_MAPA = {
+    "banco_indisponivel": 503,
+    "mapa_inexistente": 404,
+    "mapa_somente_leitura": 409,
+    "mapa_vazio": 409,
+    "mapa_ilegivel": 422,
+}
+
+
+def _resposta_mapa(ok: bool, resultado):
+    if not ok:
+        return jsonify({"ok": False, "error": resultado}), _STATUS_ERRO_MAPA.get(resultado, 400)
+    return jsonify({"ok": True, "resultado": resultado, "mapa": mapeamento.status_detalhado()})
+
+
+@app.route("/api/mapa/status")
+def route_mapa_status():
+    return jsonify({"ok": True, "mapa": mapeamento.status_detalhado()})
+
+
+@app.route("/api/mapa/ligar", methods=["POST"])
+def route_mapa_ligar():
+    return _resposta_mapa(*mapeamento.ligar())
+
+
+@app.route("/api/mapa/pausar", methods=["POST"])
+def route_mapa_pausar():
+    return _resposta_mapa(*mapeamento.pausar())
+
+
+@app.route("/api/mapa/novo", methods=["POST"])
+def route_mapa_novo():
+    return _resposta_mapa(*mapeamento.novo())
+
+
+@app.route("/api/mapa/salvar", methods=["POST"])
+def route_mapa_salvar():
+    payload = request.get_json(silent=True) or {}
+    return _resposta_mapa(*mapeamento.salvar(payload.get("nome", "")))
+
+
+@app.route("/api/mapa/config", methods=["POST"])
+def route_mapa_config():
+    return _resposta_mapa(*mapeamento.configurar(request.get_json(silent=True) or {}))
+
+
+@app.route("/api/mapa/lista")
+def route_mapa_lista():
+    return jsonify({"ok": True, "mapas": mapeamento.listar()})
+
+
+@app.route("/api/mapa/<int:mapa_id>/abrir", methods=["POST"])
+def route_mapa_abrir(mapa_id: int):
+    return _resposta_mapa(*mapeamento.abrir(mapa_id))
+
+
+@app.route("/api/mapa/<int:mapa_id>/apagar", methods=["POST"])
+def route_mapa_apagar(mapa_id: int):
+    return _resposta_mapa(*mapeamento.apagar(mapa_id))
+
+
+@app.route("/api/mapa/imagem.png")
+def route_mapa_imagem():
+    dados = mapeamento.imagem_png()
+    if dados is None:
+        return "", 204
+    resposta = Response(dados, mimetype="image/png")
+    resposta.headers["Cache-Control"] = "no-store"
+    return resposta

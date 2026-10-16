@@ -1,13 +1,16 @@
-"""Decisao do comando enviado ao Arduino: modo autonomo por profundidade, manual e watchdog."""
+"""Decisao do comando enviado ao Arduino: manual, autonomo por regras, IA e watchdog."""
 
 from pc_agv.config import (
     AUTO_LOOP_SECONDS,
     CONTROL_LOOP_SECONDS,
+    IA_CORRECAO_JANELA_S,
     WATCHDOG_TIMEOUT_S,
 )
 from pc_agv import estado
 from pc_agv import util
+from pc_agv.aprendizado import servico as aprendizado
 from pc_agv.hardware import arduino
+
 
 
 def compute_autopilot_command() -> tuple[int, int, str]:
@@ -50,12 +53,16 @@ def compute_autopilot_command() -> tuple[int, int, str]:
 
 
 def autopilot_loop() -> None:
+    """Calcula o comando dos modos automaticos: regras (auto) ou rede treinada (ia)."""
     while not estado.stop_event.is_set():
         with estado.control_lock:
-            auto_mode = estado.control_state["mode"] == "auto"
+            mode = estado.control_state["mode"]
 
-        if auto_mode:
-            speed, steering, reason = compute_autopilot_command()
+        if mode in ("auto", "ia"):
+            if mode == "auto":
+                speed, steering, reason = compute_autopilot_command()
+            else:
+                speed, steering, reason = aprendizado.decidir()
             with estado.autopilot_lock:
                 estado.autopilot_state["running"] = True
                 estado.autopilot_state["target_speed"] = speed
@@ -82,11 +89,21 @@ def control_loop() -> None:
             source = estado.control_state["last_source"]
             updated_at = estado.control_state["updated_at"]
 
-        if mode == "auto":
+        correcao = (
+            mode == "ia"
+            and (manual_speed != 0 or manual_steering != 0)
+            and (util.now() - updated_at) <= IA_CORRECAO_JANELA_S
+        )
+        if correcao:
+            # O operador corrigiu a IA: o comando dele vale e vira exemplo para o treino.
+            speed = manual_speed
+            steering = manual_steering
+            command_source = "correcao"
+        elif mode in ("auto", "ia"):
             with estado.autopilot_lock:
                 speed = int(estado.autopilot_state["target_speed"])
                 steering = int(estado.autopilot_state["target_steering"])
-            command_source = "autopilot"
+            command_source = "autopilot" if mode == "auto" else "ia"
         else:
             # Watchdog: se nenhum novo comando chegou dentro do timeout, para o AGV.
             if WATCHDOG_TIMEOUT_S > 0 and (util.now() - updated_at) > WATCHDOG_TIMEOUT_S:
@@ -106,6 +123,7 @@ def control_loop() -> None:
         with estado.control_lock:
             estado.control_state["active_speed"] = speed
             estado.control_state["active_steering"] = steering
+            estado.control_state["active_source"] = command_source
             estado.control_state["arduino_sent"] = bool(sent)
             estado.control_state["arduino_error"] = error
 

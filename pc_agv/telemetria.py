@@ -8,8 +8,10 @@ from pc_agv.config import (
 )
 from pc_agv import estado
 from pc_agv import util
+from pc_agv.aprendizado import servico as aprendizado
 from pc_agv.hardware import arduino as arduino_link
 from pc_agv.hardware import kinect
+from pc_agv.mapeamento import servico as mapeamento
 from pc_agv.visao import rostos
 
 
@@ -38,6 +40,7 @@ def status_snapshot() -> dict:
             "active_steering": estado.control_state["active_steering"],
             "updated_at": estado.control_state["updated_at"],
             "last_source": estado.control_state["last_source"],
+            "active_source": estado.control_state["active_source"],
             "arduino_sent": estado.control_state["arduino_sent"],
             "arduino_error": estado.control_state["arduino_error"],
         }
@@ -67,6 +70,8 @@ def status_snapshot() -> dict:
             "device": estado.state.get("zed_device") or ZED_DEVICE,
         },
         "face": rostos.face_status_snapshot(),
+        "ia": aprendizado.status_snapshot(),
+        "mapa": mapeamento.resumo(),
         "settings": dict(estado.settings),
         "runtime": {
             "host": DEFAULT_HOST,
