@@ -88,6 +88,19 @@ def para_agv(angulos_graus, distancias_m, montagem: Montagem = MONTAGEM_PADRAO) 
     return pontos, np.arctan2(np.sin(rad), np.cos(rad))
 
 
+def espaco_de_giro(pontos: np.ndarray, corpo: Corpo = CORPO_PADRAO) -> Optional[float]:
+    """Sobra (m) entre o circulo que os cantos do chassi descrevem girando no lugar e o
+    obstaculo mais proximo. None = nenhum ponto em volta. Pontos dentro do chassi sao o
+    proprio AGV e nao contam."""
+    meia = corpo.largura_m / 2.0
+    pontos = np.asarray(pontos, dtype=np.float64).reshape(-1, 2)
+    fora = ~((pontos[:, 0] <= corpo.frente_m) & (pontos[:, 0] >= -corpo.tras_m) & (np.abs(pontos[:, 1]) <= meia))
+    if not fora.any():
+        return None
+    raio_cantos = math.hypot(max(corpo.frente_m, corpo.tras_m), meia)
+    return float(np.hypot(pontos[fora, 0], pontos[fora, 1]).min()) - raio_cantos
+
+
 def _menor(valores: np.ndarray) -> Optional[float]:
     return round(float(valores.min()), 3) if valores.size else None
 

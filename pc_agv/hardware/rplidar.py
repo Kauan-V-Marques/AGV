@@ -235,6 +235,15 @@ def publicar(angulos: list, distancias: list, agora: float, hz: float) -> None:
         )
 
 
+GIRO_MARGEM_M = 0.06  # sobra exigida alem do circulo que os cantos descrevem ao girar
+
+
+def pode_girar(pontos) -> bool:
+    """Ha espaco para girar no lugar (ou fazer a curva fechada do firmware) sem raspar?"""
+    espaco = geometria.espaco_de_giro(pontos, CORPO)
+    return espaco is None or espaco >= GIRO_MARGEM_M
+
+
 def leitura_recente(agora: Optional[float] = None) -> Optional[dict]:
     """Pontos e folgas da ultima volta, ou None se o LIDAR esta fora ou a volta e velha."""
     agora = util.now() if agora is None else agora

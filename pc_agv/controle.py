@@ -1,10 +1,5 @@
 """Decisao do comando enviado ao Arduino: manual, autonomo por regras, IA e watchdog."""
 
-import math
-from typing import Optional
-
-import numpy as np
-
 from pc_agv.config import (
     AUTO_LOOP_SECONDS,
     CONTROL_LOOP_SECONDS,
@@ -25,7 +20,6 @@ ATENCAO_M = 0.95
 LATERAL_MIN_M = 0.12   # folga minima ao lado do chassi para girar para aquele lado
 RE_LIVRE_M = 0.40      # corredor livre atras para recuar em linha reta
 RE_VELOCIDADE = 25
-GIRO_MARGEM_M = 0.06   # sobra exigida alem do circulo que os cantos descrevem ao girar
 MANOBRA_VALIDA_S = 1.0  # o autopiloto chama a cada 0,18 s; mais que isso e outra situacao
 
 # Re iniciada por falta de espaco: continua ate haver espaco para girar (sem isso o AGV
@@ -51,20 +45,6 @@ def _lado_mais_livre(esquerda: float, direita: float, lado_esq, lado_dir) -> int
     if lado_esq is not None and lado_esq < LATERAL_MIN_M and (lado_dir is None or lado_dir >= LATERAL_MIN_M):
         return 1
     return 1 if direita >= esquerda else -1
-
-
-def _espaco_de_giro(pontos) -> Optional[float]:
-    """Sobra (m) entre o circulo que os cantos do chassi descrevem girando no lugar e o
-    obstaculo mais proximo. None = nenhum ponto em volta. Pontos dentro do chassi sao o
-    proprio AGV e nao contam."""
-    corpo = rplidar.CORPO
-    meia = corpo.largura_m / 2.0
-    pontos = np.asarray(pontos, dtype=float).reshape(-1, 2)
-    fora = ~((pontos[:, 0] <= corpo.frente_m) & (pontos[:, 0] >= -corpo.tras_m) & (np.abs(pontos[:, 1]) <= meia))
-    if not fora.any():
-        return None
-    raio_cantos = math.hypot(max(corpo.frente_m, corpo.tras_m), meia)
-    return float(np.hypot(pontos[fora, 0], pontos[fora, 1]).min()) - raio_cantos
 
 
 def compute_autopilot_command() -> tuple[int, int, str]:
@@ -102,8 +82,7 @@ def compute_autopilot_command() -> tuple[int, int, str]:
         # Re em linha reta: so o corredor da largura do AGV atras importa (as paredes
         # laterais de um corredor aparecem nas diagonais traseiras e nao atrapalham).
         tras = _lidar_ou_livre(folgas, "tras")
-        espaco = _espaco_de_giro(leitura["pontos"])
-        pode_girar = espaco is None or espaco >= GIRO_MARGEM_M
+        pode_girar = rplidar.pode_girar(leitura["pontos"])
 
     center_distance = center if center is not None else distance
     if center_distance is None:

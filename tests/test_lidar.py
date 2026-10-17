@@ -303,10 +303,12 @@ class TestEspacoDeGiro(unittest.TestCase):
         return controle.compute_autopilot_command()
 
     def test_espaco_de_giro_ignora_o_proprio_chassi(self):
+        raio = math.hypot(0.30, 0.25)
+        self.assertIsNone(geometria.espaco_de_giro(np.array([[0.1, 0.1]]), CORPO))
+        self.assertAlmostEqual(geometria.espaco_de_giro(np.array([[0.1, 0.1], [0.0, 0.60]]), CORPO), 0.60 - raio)
         with patch.object(rplidar, "CORPO", CORPO):
-            raio = math.hypot(0.30, 0.25)
-            self.assertIsNone(controle._espaco_de_giro(np.array([[0.1, 0.1]])))
-            self.assertAlmostEqual(controle._espaco_de_giro(np.array([[0.1, 0.1], [0.0, 0.60]])), 0.60 - raio)
+            self.assertTrue(rplidar.pode_girar(np.array([[0.0, 0.60]])))
+            self.assertFalse(rplidar.pode_girar(np.array([[0.0, 0.40]])))
 
     def test_sem_espaco_para_girar_recua_e_continua_recuando(self):
         parede_lateral = [[x, 0.33] for x in np.arange(-1.0, 1.0, 0.05)]
@@ -347,6 +349,15 @@ class TestSegurancaDaIaComLidar(unittest.TestCase):
         self.assertEqual(politica.aplicar_seguranca(-20, 10, 3.0, 100, tras_m=1.0), (-20, 10, "ia"))
         # sem LIDAR a re continua liberada (lenta)
         self.assertEqual(politica.aplicar_seguranca(-20, 10, 3.0, 100), (-20, 10, "ia"))
+
+    def test_sem_espaco_para_girar_a_ia_anda_reto(self):
+        self.assertEqual(politica.aplicar_seguranca(-20, 60, 3.0, 100, tras_m=1.0, pode_girar=False),
+                         (-20, 0, "ia-sem-espaco-para-girar"))
+        self.assertEqual(politica.aplicar_seguranca(0, 60, 3.0, 100, pode_girar=False),
+                         (0, 0, "ia-sem-espaco-para-girar"))
+        # e a re reta continua conferida
+        self.assertEqual(politica.aplicar_seguranca(-20, 60, 3.0, 100, tras_m=0.1, pode_girar=False),
+                         (0, 0, "ia-bloqueio-tras"))
 
 
 class TestMapaComLidar(unittest.TestCase):
