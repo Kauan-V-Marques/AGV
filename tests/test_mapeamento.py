@@ -50,6 +50,15 @@ class TestGeometria(unittest.TestCase):
         np.testing.assert_allclose(np.abs(normais[:10, 0]), 1.0, atol=1e-9)  # parede em x = 2: normal em x
         self.assertTrue(np.isnan(normais[10]).all())
 
+    def test_normais_com_o_espacamento_do_lidar(self):
+        # RPLIDAR: um ponto a cada 3 graus. A 3,5 m, pontos da mesma parede ficam a ~18 cm,
+        # acima do limite fixo de 15 cm; a parede precisa continuar tendo normal.
+        angulos = np.radians(np.arange(-30.0, 31.0, 3.0))
+        parede = np.column_stack([np.full(len(angulos), 3.5), 3.5 * np.tan(angulos)])
+        normais = geometria.normais(parede)
+        self.assertTrue(np.isfinite(normais[:, 0]).all())
+        np.testing.assert_allclose(np.abs(normais[:, 0]), 1.0, atol=1e-9)
+
     def test_vizinhos_igual_a_forca_bruta(self):
         rng = np.random.default_rng(0)
         a, b = rng.uniform(-3, 3, (40, 2)), rng.uniform(-3, 3, (55, 2))

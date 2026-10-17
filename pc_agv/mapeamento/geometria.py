@@ -48,6 +48,19 @@ class ResultadoIcp(NamedTuple):
 
 
 VIZINHO_MAX_M = 0.15  # pontos vizinhos mais afastados que isso nao estao na mesma superficie
+VIZINHO_FATOR = 2.5   # ... ou que 2,5 vezes o espacamento entre dois raios naquela distancia
+
+
+def _limite_vizinho(pontos: np.ndarray) -> np.ndarray:
+    """Distancia maxima entre vizinhos da mesma superficie, para cada ponto.
+
+    O Kinect tem um raio a cada ~0,36 grau e o limite fixo basta. O RPLIDAR tem um
+    ponto a cada ~3 graus: a 3 m, dois pontos da mesma parede ficam a ~16 cm, e com o
+    limite fixo as paredes distantes ficavam sem normal e o casamento era recusado.
+    """
+    angulos = np.unwrap(np.arctan2(pontos[:, 1], pontos[:, 0]))
+    passo = float(np.median(np.abs(np.diff(angulos))))
+    return np.maximum(VIZINHO_MAX_M, VIZINHO_FATOR * np.hypot(pontos[:, 0], pontos[:, 1]) * passo)
 
 
 def normais(pontos: np.ndarray) -> np.ndarray:
@@ -60,10 +73,11 @@ def normais(pontos: np.ndarray) -> np.ndarray:
     saida = np.full((n, 2), np.nan)
     if n < 3:
         return saida
+    limite = _limite_vizinho(pontos)
     antes = np.vstack([pontos[:1], pontos[:-1]])
     depois = np.vstack([pontos[1:], pontos[-1:]])
-    perto_antes = np.hypot(*(pontos - antes).T) < VIZINHO_MAX_M
-    perto_depois = np.hypot(*(depois - pontos).T) < VIZINHO_MAX_M
+    perto_antes = np.hypot(*(pontos - antes).T) < limite
+    perto_depois = np.hypot(*(depois - pontos).T) < limite
     perto_antes[0] = False
     perto_depois[-1] = False
     a = np.where(perto_antes[:, None], antes, pontos)
