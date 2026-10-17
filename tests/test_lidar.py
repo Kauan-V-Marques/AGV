@@ -315,14 +315,15 @@ class TestPortaDoArduino(unittest.TestCase):
             self.assertEqual(arduino._candidate_arduino_ports(), ["/dev/ttyUSB0"])
 
     def test_arduino_ignora_o_adaptador_do_lidar_mesmo_sem_o_atalho(self):
-        # Logo depois de religar o laser, /dev/ttyUSB0 ja existe mas /dev/rplidar ainda nao.
-        laser = type("Porta", (), {"device": "/dev/ttyUSB0", "vid": 0x10C4, "pid": 0xEA60})()
-        ftdi = type("Porta", (), {"device": "/dev/ttyUSB1", "vid": 0x0403, "pid": 0x6001})()
+        # Logo depois de religar o laser, a porta dele ja existe mas /dev/rplidar ainda nao.
+        # Nomes ficticios: o teste nao pode depender das portas reais da maquina.
+        laser = type("Porta", (), {"device": "/dev/ttyTESTE0", "vid": 0x10C4, "pid": 0xEA60})()
+        ftdi = type("Porta", (), {"device": "/dev/ttyTESTE1", "vid": 0x0403, "pid": 0x6001})()
         with patch.object(rplidar, "porta_reservada", return_value="/dev/rplidar"), \
-                patch.dict(os.environ, {"AGV_ARDUINO_PORT": "/dev/agv-arduino"}), \
+                patch.dict(os.environ, {"AGV_ARDUINO_PORT": "/dev/arduino-teste"}), \
                 patch("glob.glob", return_value=[]), \
                 patch("serial.tools.list_ports.comports", return_value=[laser, ftdi]):
-            self.assertEqual(arduino._candidate_arduino_ports(), ["/dev/agv-arduino", "/dev/ttyUSB1"])
+            self.assertEqual(arduino._candidate_arduino_ports(), ["/dev/arduino-teste", "/dev/ttyTESTE1"])
 
     def test_arduino_nunca_tenta_as_portas_da_placa_mae(self):
         info = type("Porta", (), {"device": "/dev/ttyS9"})()

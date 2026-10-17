@@ -1020,12 +1020,13 @@ body.hud-active { overflow: hidden; }
 .hud-corner-pip .stream { width: 100%; height: 100%; object-fit: cover; }
 .hud-pip-zed { top: calc(max(14px, env(safe-area-inset-top)) + min(22.5vw, 195px) + 10px); }
 .hud-pip-zed.hud-rosto { border-color: rgba(80, 230, 120, 0.9); box-shadow: 0 0 0 2px rgba(80, 230, 120, 0.35); }
+/* Radar na coluna da direita, embaixo da camera traseira: no centro ele cobria a pista. */
 .hud-radar {
   position: absolute;
-  left: 50%;
-  bottom: max(14px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: min(24vw, 230px);
+  right: 14px;
+  top: calc(max(14px, env(safe-area-inset-top)) + 2 * min(22.5vw, 195px) + 20px);
+  width: min(18vw, 170px);
+  opacity: 0.85;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 50%;
@@ -1036,6 +1037,9 @@ body.hud-active { overflow: hidden; }
 }
 .hud-radar canvas { display: block; width: 100%; height: 100%; }
 .hud-radar .hud-pip-label { left: 50%; bottom: 8px; transform: translateX(-50%); white-space: nowrap; }
+.hud-radar[hidden] { display: none; }
+.hud-chip-botao { cursor: pointer; color: inherit; font: inherit; }
+.hud-chip-botao[aria-pressed="false"] { opacity: 0.55; }
 .hud-pip-label { position: absolute; z-index: 1; left: 8px; bottom: 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
 .hud-telemetry { position: absolute; left: 14px; bottom: max(14px, env(safe-area-inset-bottom)); display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; }
 .hud-metric { display: flex; justify-content: space-between; gap: 24px; font-size: 13px; }
@@ -1416,7 +1420,8 @@ body.hud-active { overflow: hidden; }
   .metrica.larga { grid-column: span 2; }
   .hud-corner-pip { width: 36vw; }
   .hud-pip-zed { top: calc(max(14px, env(safe-area-inset-top)) + 27vw + 8px); }
-  .hud-radar { width: 34vw; left: auto; right: 14px; transform: none; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 100px); }
+  .hud-radar { width: 30vw; top: calc(max(14px, env(safe-area-inset-top)) + 2 * 27vw + 24px); }
+  .hud-top-bar { max-width: calc(64vw - 40px); }  /* quebra a linha antes dos quadros da direita */
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1425,4 +1430,17 @@ body.hud-active { overflow: hidden; }
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
+}
+
+/* HUD em tela baixa (celular deitado): os quadros da direita acompanham a altura, o
+   radar vai para a esquerda (embaixo dos indicadores, longe do botao de parada) e o
+   botao Sair desce para nao ficar sob os indicadores. */
+@media (max-height: 500px) {
+  .hud-corner-pip { width: min(24vw, 40vh); }
+  .hud-pip-zed { top: calc(max(14px, env(safe-area-inset-top)) + min(18vw, 30vh) + 8px); }
+  .hud-radar { width: 26vh; right: auto; left: 14px; top: 58px; }
+}
+@media (max-width: 900px), (max-height: 500px) {
+  .hud-chip { padding: 4px 7px; font-size: 10px; }
+  .hud-exit-btn { top: auto; bottom: max(14px, env(safe-area-inset-bottom)); }
 }

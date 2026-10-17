@@ -655,9 +655,9 @@
 
   <!-- Elementos de video: o JS os coloca nos espacos (data-slot) da secao aberta -->
   <div class="garagem" aria-hidden="true">
-    <img class="stream" id="rgb-stream" src="/video" alt="Vídeo RGB do Kinect">
-    <img class="stream" id="depth-stream" src="/depth_map" alt="Mapa de profundidade do Kinect">
-    <img class="stream" id="zed-stream" src="/zed" alt="Vídeo da câmera ZED">
+    <img class="stream" id="rgb-stream" alt="Vídeo RGB do Kinect">
+    <img class="stream" id="depth-stream" alt="Mapa de profundidade do Kinect">
+    <img class="stream" id="zed-stream" alt="Vídeo da câmera ZED">
   </div>
 
   <!-- ── HUD em tela cheia ───────────────────────────────────────── -->
@@ -668,6 +668,7 @@
       <div class="hud-chip" id="hud-chip-kinect">KINECT --</div>
       <div class="hud-chip" id="hud-chip-serial">SERIAL --</div>
       <div class="hud-chip" id="hud-chip-lidar">LIDAR --</div>
+      <button class="hud-chip hud-chip-botao" id="hud-radar-toggle" type="button" aria-pressed="true" title="Mostrar ou esconder o radar">RADAR</button>
     </div>
     <div class="hud-corner-pip" id="hud-pip-frame">
       <span class="hud-pip-label">Profundidade</span>

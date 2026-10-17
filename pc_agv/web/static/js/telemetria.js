@@ -8,7 +8,7 @@ import { controlState } from "./estado.js";
 import { atualizarSetor, desenharGraficos, registrarLeitura } from "./graficos.js";
 import { atualizarEstadoRosto, updateFaceSelector } from "./rostos.js";
 import { $, definirTexto, fmtMetros, limitar, nivelDistancia } from "./util.js";
-import { marcarQuadros } from "./videos.js";
+import { marcarQuadros, registrarRtt } from "./videos.js";
 
 function definirEstado(id, estado) {
   const el = $(id);
@@ -189,11 +189,13 @@ async function refreshStatus() {
     // Polling adaptativo: quanto mais rapido o RTT, mais frequente o poll.
     _statusInterval = rtt < 300 ? 500 : rtt < 800 ? 900 : 1800;
     _updateNetBanner(rtt);
+    registrarRtt(rtt);
   } catch (error) {
     clearTimeout(tid);
     _statusFail++;
     _statusInterval = Math.min(3000, 500 + _statusFail * 500);
     _updateNetBanner(null);
+    registrarRtt(null);
     console.warn("status timeout/erro #" + _statusFail);
   } finally {
     clearTimeout(_statusTimer);

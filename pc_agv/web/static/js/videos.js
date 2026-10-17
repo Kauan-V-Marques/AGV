@@ -82,6 +82,7 @@ export function posicionarVideos() {
 }
 
 export function iniciarVideos() {
+  iniciarQualidadeDeVideo();
   try {
     uiState.foco = JSON.parse(lerPreferencia("agv_foco", "{}")) || {};
   } catch (erro) {
@@ -99,6 +100,68 @@ export function iniciarVideos() {
       posicionarVideos();
     });
   });
+}
+
+// ── Qualidade dos videos conforme o aparelho e a rede ───────────────
+// Os tres streams somam ~4 Mbit/s no perfil completo; num celular ou num Wi-Fi cheio
+// isso enche a fila do link e atrasa tudo, inclusive os comandos (picos de 1 s medidos).
+// O servidor nunca manda mais que o configurado; aqui o painel so pede menos.
+const ROTAS = { rgb: "/video", depth: "/depth_map", zed: "/zed" };
+const PERFIS = {
+  completo: {},
+  leve: { rgb: { fps: 8, q: 60, w: 480 }, depth: { fps: 4, q: 55, w: 320 }, zed: { fps: 5, q: 55, w: 400 } },
+  minimo: { rgb: { fps: 4, q: 45, w: 320 }, depth: { fps: 2, q: 45, w: 240 }, zed: { fps: 2, q: 45, w: 320 } },
+};
+const ORDEM_PERFIS = ["completo", "leve", "minimo"];
+const RTT_PIORA_MS = 600;     // mediana acima disso: pede menos
+const RTT_MELHORA_MS = 250;   // abaixo disso: volta a pedir mais (ate o perfil do aparelho)
+const TROCA_MIN_MS = 10000;   // trocar reinicia os streams: no maximo uma vez a cada 10 s
+
+let perfilVideo = null;
+let perfilBase = "completo";
+let ultimaTroca = 0;
+const rtts = [];
+
+function rotaDoStream(nome, perfil) {
+  const opcoes = (PERFIS[perfil] || {})[nome];
+  return opcoes ? `${ROTAS[nome]}?fps=${opcoes.fps}&q=${opcoes.q}&w=${opcoes.w}` : ROTAS[nome];
+}
+
+function aplicarPerfilDeVideo(perfil) {
+  if (perfil === perfilVideo) return;
+  perfilVideo = perfil;
+  ultimaTroca = Date.now();
+  ORDEM.forEach((nome) => { streams[nome].src = rotaDoStream(nome, perfil); });
+  document.body.dataset.video = perfil;
+  const rede = $("st-rede");
+  if (rede) rede.title = `Tempo de resposta do AGV · vídeo: ${perfil}`;
+}
+
+export function perfilDeVideo() {
+  return perfilVideo;
+}
+
+// Chamado a cada /api/status com o tempo de resposta (null = sem resposta).
+export function registrarRtt(rtt) {
+  rtts.push(rtt === null ? 3000 : rtt);
+  if (rtts.length > 8) rtts.shift();
+  if (rtts.length < 5 || Date.now() - ultimaTroca < TROCA_MIN_MS) return;
+  const ordenados = [...rtts].sort((a, b) => a - b);
+  const mediana = ordenados[Math.floor(ordenados.length / 2)];
+  const atual = ORDEM_PERFIS.indexOf(perfilVideo);
+  if (mediana > RTT_PIORA_MS && atual < ORDEM_PERFIS.length - 1) {
+    aplicarPerfilDeVideo(ORDEM_PERFIS[atual + 1]);
+    rtts.length = 0;
+  } else if (mediana < RTT_MELHORA_MS && atual > ORDEM_PERFIS.indexOf(perfilBase)) {
+    aplicarPerfilDeVideo(ORDEM_PERFIS[atual - 1]);
+    rtts.length = 0;
+  }
+}
+
+function iniciarQualidadeDeVideo() {
+  const celular = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 900;
+  perfilBase = celular ? "leve" : "completo";
+  aplicarPerfilDeVideo(perfilBase);
 }
 
 function carimbo() {

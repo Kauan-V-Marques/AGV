@@ -36,7 +36,9 @@ _CARIMBO = {"rgb": "last_frame_at", "depth": "depth_at", "zed": "zed_last_frame_
 ESPERA_REENVIO_S = 1.0  # quadro de espera (sem camera): no maximo um por segundo
 
 
-def mjpeg_generator(kind: str, fps: int):
+def mjpeg_generator(kind: str, fps: int, qualidade: Optional[int] = None, largura: Optional[int] = None):
+    """qualidade/largura: limites pedidos pelo painel (celular ou rede lenta) para o
+    stream pesar menos; nunca deixam o quadro maior nem melhor que o padrao."""
     interval = 1.0 / max(1, fps)
     chave = _CARIMBO.get(kind, "zed_last_frame_at")
     enviado = None       # carimbo do ultimo quadro enviado
@@ -91,6 +93,11 @@ def mjpeg_generator(kind: str, fps: int):
                     frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
             quality = util.clamp(ZED_JPEG_QUALITY, 35, 95)
 
+        if largura and frame.shape[1] > largura:
+            altura = max(2, int(frame.shape[0] * largura / frame.shape[1]))
+            frame = cv2.resize(frame, (int(largura), altura), interpolation=cv2.INTER_AREA)
+        if qualidade:
+            quality = min(quality, int(qualidade))
         data = _encode_jpeg(frame, quality=quality)
         if data is not None:
             yield (

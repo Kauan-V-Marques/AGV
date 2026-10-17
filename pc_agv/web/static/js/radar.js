@@ -2,7 +2,7 @@
 // folgas por setor. Desenhado na pagina Telemetria e no HUD; so le /api/lidar
 // quando um dos dois esta visivel.
 
-import { $, fmtMetros, nivelDistancia } from "./util.js";
+import { $, fmtMetros, gravarPreferencia, lerPreferencia, nivelDistancia } from "./util.js";
 
 const SETORES = ["frente", "frente_esq", "esquerda", "tras_esq", "tras", "tras_dir", "direita", "frente_dir"];
 const ANEIS_M = [0.5, 1, 2, 4];
@@ -25,7 +25,19 @@ function secaoVisivel() {
 
 function hudVisivel() {
   const hud = $("hud-overlay");
-  return hud && !hud.hidden;
+  const radar = $("hud-radar");
+  return hud && !hud.hidden && radar && !radar.hidden;
+}
+
+// Botao RADAR do HUD: esconde ou mostra o radar (lembrado no navegador).
+function mostrarRadarNoHud(mostrar) {
+  const radar = $("hud-radar");
+  const botao = $("hud-radar-toggle");
+  if (!radar || !botao) return;
+  radar.hidden = !mostrar;
+  botao.setAttribute("aria-pressed", mostrar ? "true" : "false");
+  gravarPreferencia("agv_hud_radar", mostrar ? "1" : "0");
+  if (mostrar) requestAnimationFrame(desenharRadar);
 }
 
 function atualizarFolga(setor, valor) {
@@ -148,6 +160,9 @@ async function ler() {
 }
 
 export function iniciarRadar() {
+  mostrarRadarNoHud(lerPreferencia("agv_hud_radar", "1") === "1");
+  const botao = $("hud-radar-toggle");
+  if (botao) botao.addEventListener("click", () => mostrarRadarNoHud($("hud-radar").hidden));
   ler();
   window.addEventListener("agv:hud", () => { ler(); requestAnimationFrame(desenharRadar); });
 }

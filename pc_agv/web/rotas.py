@@ -5,6 +5,7 @@ import mimetypes
 import os
 import socket
 import threading
+from typing import Optional
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
@@ -79,19 +80,35 @@ def route_index():
     return response
 
 
+def _inteiro(nome: str, minimo: int, maximo: int) -> Optional[int]:
+    try:
+        valor = int(request.args.get(nome, ""))
+    except ValueError:
+        return None
+    return max(minimo, min(maximo, valor))
+
+
+def _stream(kind: str, fps_maximo: int) -> Response:
+    """Stream MJPEG. O painel pode pedir menos (?fps=, ?q= qualidade do JPEG, ?w= largura)
+    num celular ou numa rede lenta; nunca mais que o configurado no servidor."""
+    fps = _inteiro("fps", 1, max(1, fps_maximo)) or fps_maximo
+    gerador = mjpeg.mjpeg_generator(kind, fps, qualidade=_inteiro("q", 20, 95), largura=_inteiro("w", 160, 1920))
+    return Response(gerador, mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
 @app.route("/video")
 def route_video():
-    return Response(mjpeg.mjpeg_generator("rgb", VIDEO_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return _stream("rgb", VIDEO_FPS)
 
 
 @app.route("/depth_map")
 def route_depth_map():
-    return Response(mjpeg.mjpeg_generator("depth", DEPTH_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return _stream("depth", DEPTH_FPS)
 
 
 @app.route("/zed")
 def route_zed():
-    return Response(mjpeg.mjpeg_generator("zed", ZED_STREAM_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return _stream("zed", ZED_STREAM_FPS)
 
 
 @app.route("/api/video")

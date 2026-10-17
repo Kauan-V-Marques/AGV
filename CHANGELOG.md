@@ -30,6 +30,8 @@ Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v
 - O Arduino não tenta mais as portas `ttyS*` (uma delas viraria um Arduino falso); a webcam religada volta em 3 s (antes ~19 s).
 - **Serial presa travava o painel e a parada de emergência** (`flush()` sem timeout segurando o lock da serial): sem `flush()`, leituras de estado com timeout, parada que muda o modo antes de enviar e não espera a serial, e "Write timeout" sem fechar a porta (a reconexão do Arduino caiu de até 34 s para 2–5 s).
 - **O RPLIDAR não voltava depois de muito tempo desconectado:** a busca do Arduino abria a porta do laser no instante em que ele reaparecia (antes do atalho `/dev/rplidar`) e ficava nela. Agora as portas são exclusivas, o Arduino só é aceito se o firmware responder (ouvindo até 3 s) e o adaptador CP210x do laser é reconhecido pelo USB.
+- **Pelo celular, picos de 1.000+ ms:** os vídeos somavam ~11 Mbit/s e enchiam o Wi-Fi do celular. O painel agora pede vídeo leve no celular (~2 Mbit/s) e mínimo em rede lenta (~0,5 Mbit/s); os streams aceitam `fps`, `q` e `w`.
+- Radar do HUD fora do centro (cobria a pista), menor, com botão **RADAR** para esconder; HUD ajustado para celular deitado e em pé.
 - O Arduino não tenta mais abrir a porta do RPLIDAR.
 - A parada logo depois do modo Autônomo não vira mais exemplo do "operador" no aprendizado.
 - `scripts/instalar_freenect_python.sh` com `PYTHON=.venv/bin/python` (caminho relativo) e sem `curl`.

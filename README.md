@@ -232,7 +232,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 |---|---|---|
 | RNF01 | Compatibilidade (operador) | O painel deve funcionar em navegador moderno de PC ou celular, sem instalar aplicativo |
 | RNF02 | Plataforma (AGV) | O servidor com hardware roda em Linux x86_64 com libfreenect; no Windows/Mac só é possível visualizar o painel, sem hardware |
-| RNF03 | Desempenho | Por padrão os streams são limitados a 6 fps (RGB) e 4 fps (profundidade) para funcionar em Wi-Fi fraco; os valores são configuráveis (`AGV_VIDEO_FPS`, `AGV_DEPTH_FPS`) |
+| RNF03 | Desempenho | Por padrão os streams são limitados a 6 fps (RGB) e 4 fps (profundidade) para funcionar em Wi-Fi fraco; os valores são configuráveis (`AGV_VIDEO_FPS`, `AGV_DEPTH_FPS`); o painel pede vídeo mais leve no celular (perfil *leve*, ~2 Mbit/s, em vez de ~11 Mbit/s) e mais leve ainda quando o tempo de resposta passa de 600 ms (*mínimo*, ~0,5 Mbit/s), voltando quando a rede melhora |
 | RNF04 | Conectividade | Operador e AGV devem estar na mesma rede local, porta 5000; não é necessária internet para operar |
 | RNF05 | Segurança operacional | O AGV deve parar sozinho se os comandos deixarem de chegar (2 s no servidor, 500 ms no Arduino); o firmware impede inverter o sentido do motor em alta velocidade |
 | RNF06 | Disponibilidade | Kinect, ZED e Arduino são reconectados automaticamente; no Docker o container reinicia (`restart: unless-stopped`) |
@@ -667,7 +667,7 @@ Quase todos os módulos também importam `config.py` (variáveis `AGV_*`) e `uti
 | Método | Rota | Uso |
 |---|---|---|
 | GET | `/` | Painel web |
-| GET | `/video` · `/depth_map` · `/zed` | Streams MJPEG (RGB, profundidade, ZED) |
+| GET | `/video` · `/depth_map` · `/zed` | Streams MJPEG (RGB, profundidade, ZED); aceitam `?fps=`, `?q=` (qualidade do JPEG) e `?w=` (largura máxima) para pesar menos, nunca acima do configurado |
 | GET | `/api/status` | Telemetria completa em JSON (inclui a seção `lidar`: estado, voltas/s e folgas) |
 | GET | `/api/lidar` | Última volta do RPLIDAR (pontos no referencial do AGV), folgas, tamanho do chassi e montagem |
 | GET | `/api/access_link` | Endereço do painel na rede local |
@@ -1411,7 +1411,7 @@ http://IP_DO_AGV:5000
 ![HUD em tela cheia](docs/images/hud-tela-cheia.png)
 
 - **Finalidade:** dirigir olhando só para o vídeo, com as informações do sensor sobrepostas.
-- **Elementos:** vídeo RGB em tela cheia, chips de modo/Kinect/serial/LIDAR (topo), distâncias Dist/Esq/Cen/Dir/Trás, comando e FPS (canto inferior esquerdo), miniatura da profundidade (canto superior direito), vídeo da câmera traseira com a caixa do rosto reconhecido logo abaixo (a borda fica verde e mostra o nome quando a pessoa aparece), radar 360° do RPLIDAR (embaixo, no centro), dica de teclas e botão **Sair**. No celular, o joystick aparece sobre o vídeo e o radar sobe para a direita.
+- **Elementos:** vídeo RGB em tela cheia, chips de modo/Kinect/serial/LIDAR (topo), distâncias Dist/Esq/Cen/Dir/Trás, comando e FPS (canto inferior esquerdo), miniatura da profundidade (canto superior direito), vídeo da câmera traseira com a caixa do rosto reconhecido logo abaixo (a borda fica verde e mostra o nome quando a pessoa aparece), radar 360° do RPLIDAR pequeno embaixo dela (o botão **RADAR** do topo esconde e mostra; a escolha fica no navegador), dica de teclas e botão **Sair**. No celular, o joystick aparece sobre o vídeo; deitado, o radar vai para o canto superior esquerdo e o **Sair** desce para o centro.
 - **Ação do usuário:** dirigir com WASD/setas ou joystick; **ESC** fecha.
 
 ### Aprendizado
@@ -1962,6 +1962,12 @@ gitGraph
 **Problema:** com o LIDAR fora por ~50 min (e o notebook suspenso nesse meio-tempo), ao religar ele respondia aos comandos mas nunca mandava a varredura ("parou de enviar dados" a cada 5 s). Reproduzido sem a suspensão: bastava ficar fora 60 s com o Arduino desconectado. Com 3 s fora, voltava.
 **Causa:** com o Arduino desconectado, a busca dele roda o tempo todo. Ao religar o laser, o kernel cria `/dev/ttyUSB0` um instante antes de o udev criar `/dev/rplidar`; nesse intervalo a busca não sabia que a porta era do laser, abriu-a e, como aceitava porta sem resposta do firmware, ficou "conectada" nela mandando `0,0` a 9600 baud por cima da varredura de 115200.
 **Solução:** (1) Arduino e LIDAR abrem a serial com trava exclusiva; (2) o Arduino só é aceito se o firmware se identificar (`READY`, `PONG`, `OK` ou `STATUS`), ouvindo a porta por até 3 s, porque o Arduino do AGV só fala ~2,6 s depois de abrir a porta; (3) a busca ignora o adaptador CP210x do laser pelo USB, sem depender do atalho; (4) se o laser nem respondeu, a porta é fechada sem mandar STOP (o `close()` esperava). Validado: LIDAR 60 s fora volta em 4 s; os dois 30 s fora voltam certos mesmo com as portas trocadas.
+
+### Problema 33 — Pelo celular, picos de mais de 1 s
+
+**Problema:** pelo celular, o tempo de resposta tinha picos de 1.000+ ms e o painel ficava inutilizável.
+**Causa:** o servidor respondia em 3 ms; o ping até o celular tinha média de 279 ms e picos de 739 ms. Os três vídeos somavam ~11 Mbit/s (cena com muito detalhe, 15 fps): num Wi-Fi de instituição, esse fluxo enchia o link do celular e a telemetria e os comandos esperavam na fila atrás deles.
+**Solução:** os streams aceitam `fps`, qualidade e largura menores; o painel usa o perfil *leve* (~2 Mbit/s) no celular e desce para o *mínimo* (~0,5 Mbit/s) se a mediana do tempo de resposta passar de 600 ms, subindo de novo abaixo de 250 ms (no máximo uma troca a cada 10 s). No HUD, o radar saiu do centro da tela (cobria a pista) para a coluna da direita, menor, com um botão para escondê-lo.
 
 ---
 
