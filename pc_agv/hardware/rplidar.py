@@ -141,6 +141,19 @@ def descobrir_porta() -> Optional[str]:
     return None
 
 
+def e_adaptador_do_lidar(porta: str) -> bool:
+    """A porta e de um adaptador CP210x (o que acompanha o RPLIDAR)?"""
+    real = os.path.realpath(porta)
+    try:
+        from serial.tools import list_ports  # type: ignore[import-not-found]
+        for info in list_ports.comports():
+            if os.path.realpath(str(info.device)) == real:
+                return (getattr(info, "vid", None), getattr(info, "pid", None)) == USB_CP210X
+    except Exception:
+        pass
+    return False
+
+
 def porta_reservada() -> Optional[str]:
     """Caminho real da porta do LIDAR, para o Arduino nao tentar abri-la."""
     if not LIDAR_ENABLED:
@@ -179,7 +192,9 @@ def _motor(ser, ligar: bool) -> None:
 def _abrir(porta: str):
     import serial  # type: ignore[import-not-found]
 
-    ser = serial.Serial(port=porta, baudrate=LIDAR_BAUD, timeout=0.25, write_timeout=0.5)
+    # Trava exclusiva: nenhuma outra thread ou processo (ex.: a busca do Arduino) abre a mesma porta.
+    ser = serial.Serial(port=porta, baudrate=LIDAR_BAUD, timeout=0.25, write_timeout=0.5, exclusive=True)
+    info = None
     try:
         _parar(ser)
         ser.write(comando(CMD_INFO))
@@ -205,14 +220,19 @@ def _abrir(porta: str):
             raise RuntimeError("RPLIDAR nao confirmou a varredura")
         return ser, info
     except Exception:
-        _fechar(ser)
+        # Sem resposta ao GET_INFO o adaptador ainda esta subindo (logo depois de religar):
+        # mandar STOP/motor deixaria bytes presos e o close() esperaria ate 30 s.
+        _fechar(ser, comandos=info is not None)
         raise
 
 
-def _fechar(ser) -> None:
+def _fechar(ser, comandos: bool = True) -> None:
+    """comandos=False: so fecha (o laser nem respondeu; nada de STOP nem motor)."""
     if ser is None:
         return
     try:
+        if not comandos:
+            raise RuntimeError("sem comandos")
         ser.write(comando(CMD_STOP))
         _motor(ser, False)
         time.sleep(0.05)  # ~8 bytes a 115200 baud saem em menos de 1 ms

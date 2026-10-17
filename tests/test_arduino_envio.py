@@ -75,9 +75,11 @@ def _modulo_serial_falso(fabrica):
 class TestConexaoComOArduino(unittest.TestCase):
     def _conectar(self, portas, fabrica=None, habilitado=True):
         modulos = {"serial": _modulo_serial_falso(fabrica)} if fabrica else {}
+        relogio = [0.0]  # tempo simulado: sleep avanca, monotonic le
         with arduino_isolado(), \
                 patch.object(arduino, "_candidate_arduino_ports", return_value=portas), \
-                patch.object(arduino.time, "sleep"), \
+                patch.object(arduino.time, "sleep", side_effect=lambda s: relogio.__setitem__(0, relogio[0] + s)), \
+                patch.object(arduino.time, "monotonic", side_effect=lambda: relogio[0]), \
                 patch.dict(sys.modules, modulos):
             arduino._arduino_state["enabled"] = habilitado
             ok = arduino._connect_arduino()
@@ -109,12 +111,52 @@ class TestConexaoComOArduino(unittest.TestCase):
         self.assertIs(porta, serial)
         self.assertEqual(serial.escrito, [])  # READY ja identificou, sem PING
 
-    def test_porta_sem_resposta_avisa_mas_mantem_conectado(self):
-        serial = SerialFalsa()
-        ok, final, _ = self._conectar(["/dev/ttyACM0"], fabrica=lambda **kw: serial)
+    def test_porta_sem_resposta_nao_e_o_arduino(self):
+        # Antes era aceita assim mesmo: com o Arduino desconectado, a busca "conectou" na
+        # porta do RPLIDAR e ficou mandando 0,0 por cima da varredura.
+        muda = SerialFalsa()
+        arduino_de_verdade = SerialFalsa([b"STATUS:0,0,STOP,E:0\n"])
+        portas = iter([muda, arduino_de_verdade])
+        ok, final, porta = self._conectar(["/dev/ttyUSB0", "/dev/ttyUSB1"], fabrica=lambda **kw: next(portas))
         self.assertTrue(ok)
-        self.assertEqual(serial.escrito, [b"PING\n"])
-        self.assertEqual(final["last_error"], "porta abriu, mas sem resposta do firmware")
+        self.assertEqual(muda.escrito, [b"PING\n"] * 3)  # ouviu 3 s, PING a cada segundo
+        self.assertTrue(muda.fechada)
+        self.assertIs(porta, arduino_de_verdade)
+        self.assertEqual(final["port"], os.path.realpath("/dev/ttyUSB1"))
+
+    def test_aceita_arduino_que_demora_a_reiniciar(self):
+        # No AGV o Arduino so fala ~2,6 s depois de abrir a porta (1,8 s de espera + 0,8 s).
+        class Lento(SerialFalsa):
+            def readline(self):
+                return b"" if self.chamadas_ping < 2 else b"ARDUINO:PONG\n"
+
+            @property
+            def in_waiting(self):
+                return 0 if self.chamadas_ping < 2 else 12
+
+            @property
+            def chamadas_ping(self):
+                return self.escrito.count(b"PING\n")
+
+        lento = Lento()
+        ok, final, porta = self._conectar(["/dev/ttyUSB0"], fabrica=lambda **kw: lento)
+        self.assertTrue(ok)
+        self.assertIs(porta, lento)
+        self.assertIsNone(final["last_error"])
+
+    def test_so_portas_mudas_nao_conecta(self):
+        ok, final, porta = self._conectar(["/dev/ttyUSB0"], fabrica=lambda **kw: SerialFalsa())
+        self.assertFalse(ok)
+        self.assertIsNone(porta)
+        self.assertFalse(final["connected"])
+        self.assertIn("nenhum firmware do AGV respondeu", final["last_error"])
+
+    def test_abre_a_porta_com_trava_exclusiva(self):
+        opcoes = {}
+        ok, _, _ = self._conectar(["/dev/ttyACM0"], fabrica=lambda **kw: opcoes.update(kw) or
+                                  SerialFalsa([b"ARDUINO:READY:v2.0\n"]))
+        self.assertTrue(ok)
+        self.assertTrue(opcoes.get("exclusive"))
 
     def test_sem_permissao_explica_o_grupo_dialout(self):
         def negar(**kw):

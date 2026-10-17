@@ -511,7 +511,7 @@ AGV/
 │       ├── rotas.py               # aplicação Flask e API REST
 │       ├── mjpeg.py               # streams MJPEG
 │       └── static/                # painel.html, painel.css, painel.js e js/ (um módulo por assunto)
-├── tests/                         # 280 testes, todos sem hardware (seção 22.1)
+├── tests/                         # 284 testes, todos sem hardware (seção 22.1)
 │   ├── apoio.py                   # serial falsa, parada controlada dos loops, isolamento do estado e dos bancos
 │   ├── simulador_kinect.py        # quadros de profundidade simulados numa sala (testes do mapa)
 │   ├── simulador_agv.py           # AGV virtual: Kinect, RPLIDAR, firmware e cinemática (seção 22.5)
@@ -1451,7 +1451,7 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `test_aprendizado.py` | Miniatura e características da profundidade, gradiente da rede conferido numericamente, recompensa e pesos, banco SQLite (reabrir sem perder nada, banco corrompido preservado), gravação, treino automático e **ponta a ponta**: demonstrações → treino → a IA desvia para o lado certo e continua sabendo depois de reiniciar | 55 |
 | `test_mapeamento.py` | Poses e ICP, varredura, mapa de ocupação, banco dos mapas e **odometria numa sala simulada com ruído do Kinect**: parado sem deriva, reta + giro, curvas com o Kinect à frente do eixo, vista tapada e salto impossível recusado | 30 |
 | `test_config.py` | Pasta de dados no código-fonte, no executável e por `AGV_DADOS_DIR` | 4 |
-| `test_arduino_envio.py` / `test_arduino_serial.py` | Tabela do protocolo `aceleração,direção`, limite de velocidade, ré, cabo desconectado, conexão (sem pyserial, sem porta, sem permissão/`dialout`), leitura do retorno do firmware | 18 |
+| `test_arduino_envio.py` / `test_arduino_serial.py` | Tabela do protocolo `aceleração,direção`, limite de velocidade, ré, cabo desconectado, conexão (sem pyserial, sem porta, sem permissão/`dialout`), leitura do retorno do firmware | 21 |
 | `test_rotas.py` | As 35 rotas da API: painel, streams MJPEG, status, controle (inclusive modo IA), parada total, limite de velocidade, rostos, aprendizado, mapa, entradas inválidas (400) e upload grande demais (413) | 40 |
 | `test_rostos.py` | Banco de rostos (formato atual e antigo, arquivo corrompido não é apagado), regra de seleção com margem anti-impostor, fila de quadros e **cadastro com sucesso** | 19 |
 | `test_captura.py` | Fluxo completo do Kinect (callback → quadro BGR → distâncias no estado), disponibilidade do Kinect, tilt, ZED com rosto marcado e leitor do FFmpeg | 18 |
@@ -1459,9 +1459,9 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `test_kinect_release.py` | Liberação dos módulos do kernel, reconexão, tilt e estabilização | 9 |
 | `test_telemetria_mjpeg_runtime.py` / `test_servidor.py` | `/api/status`, quadros MJPEG, start/stop das oito threads e servidor HTTP real numa porta livre | 8 |
 | `test_simulacao.py` | **AGV virtual em malha fechada** (seção 22.5): armazém sem colisões, saída de beco sem saída, caixa na zona cega do Kinect, mapa com o laser dirigindo pelo autônomo, colisão do chassi e modelo do firmware | 6 |
-| `test_lidar.py` | Protocolo do RPLIDAR (comandos, amostras, realinhamento depois de lixo, ângulo impossível), abertura com serial falsa (motor, saúde com erro, sem resposta), referencial do AGV, máscara, folgas pela borda do chassi, thread publicando voltas, **autônomo com LIDAR** (zona cega do Kinect, lado encostado, ré quando encurralado, parede lateral), espaço de giro (recua até ter espaço, para sem saída, corredor estreito reto), ré da IA bloqueada e IA sem curva sem espaço, **mapa com o laser numa sala simulada**, **calibração da montagem** (recupera ângulo e posição; recusa parede reta), Arduino ignorando a porta do laser e as `ttyS`, webcam genérica, `agv.env` e `/api/lidar` | 45 |
+| `test_lidar.py` | Protocolo do RPLIDAR (comandos, amostras, realinhamento depois de lixo, ângulo impossível), abertura com serial falsa (motor, saúde com erro, sem resposta), referencial do AGV, máscara, folgas pela borda do chassi, thread publicando voltas, **autônomo com LIDAR** (zona cega do Kinect, lado encostado, ré quando encurralado, parede lateral), espaço de giro (recua até ter espaço, para sem saída, corredor estreito reto), ré da IA bloqueada e IA sem curva sem espaço, **mapa com o laser numa sala simulada**, **calibração da montagem** (recupera ângulo e posição; recusa parede reta), Arduino ignorando a porta do laser e as `ttyS`, webcam genérica, `agv.env` e `/api/lidar` | 47 |
 
-**Resumo:** 280 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV), em cerca de 20 s. Cobertura do pacote `pc_agv`: **90%**.
+**Resumo:** 284 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV), em cerca de 20 s. Cobertura do pacote `pc_agv`: **90%**.
 
 | Módulo | Cobertura | Módulo | Cobertura |
 |---|---|---|---|
@@ -1480,7 +1480,7 @@ O CI também **monta a imagem Docker** e **gera o executável do PyInstaller** n
 ```mermaid
 flowchart LR
     subgraph T["Testes e lint"]
-        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["280 testes com<br/>cobertura mínima de 80%"]
+        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["284 testes com<br/>cobertura mínima de 80%"]
     end
     subgraph D["Imagem Docker"]
         D1["docker build"] --> D2["Driver do Kinect<br/>importa na imagem"] --> D3["Servidor responde<br/>sem hardware"]
@@ -1956,6 +1956,12 @@ gitGraph
 **Problema:** depois de tirar e recolocar os USB várias vezes, o servidor às vezes subia mas não respondia; com o processo vivo, nem a página nem a **parada de emergência** funcionavam. Em outras vezes o Arduino levava 34 s para voltar.
 **Causa:** o `py-spy` mostrou a thread de controle parada em `ser.flush()` (no Linux, `tcdrain`, sem timeout) segurando o lock da serial; todo `/api/status` esperava esse lock. A parada de emergência chamava o envio ao Arduino (que pega o lock e até tentava reconectar) antes de mudar o modo. Os 34 s vinham do `close()` depois de um "Write timeout": o driver espera até 30 s (`closing_wait`) o que estava em trânsito para um conversor recém-religado.
 **Solução:** nenhum `flush()` na serial do Arduino e do LIDAR; leituras de estado e o encerramento esperam o lock no máximo 0,2–1 s; a parada muda o modo primeiro e manda o `0,0` numa thread própria, sem reconectar; "Write timeout" não fecha mais a porta (descarta o comando velho e tenta de novo). Validado: 5 partidas seguidas normais e a reconexão do Arduino entre 2,1 e 4,9 s em 6 desconexões.
+
+### Problema 32 — O RPLIDAR não voltava depois de ficar muito tempo desconectado
+
+**Problema:** com o LIDAR fora por ~50 min (e o notebook suspenso nesse meio-tempo), ao religar ele respondia aos comandos mas nunca mandava a varredura ("parou de enviar dados" a cada 5 s). Reproduzido sem a suspensão: bastava ficar fora 60 s com o Arduino desconectado. Com 3 s fora, voltava.
+**Causa:** com o Arduino desconectado, a busca dele roda o tempo todo. Ao religar o laser, o kernel cria `/dev/ttyUSB0` um instante antes de o udev criar `/dev/rplidar`; nesse intervalo a busca não sabia que a porta era do laser, abriu-a e, como aceitava porta sem resposta do firmware, ficou "conectada" nela mandando `0,0` a 9600 baud por cima da varredura de 115200.
+**Solução:** (1) Arduino e LIDAR abrem a serial com trava exclusiva; (2) o Arduino só é aceito se o firmware se identificar (`READY`, `PONG`, `OK` ou `STATUS`), ouvindo a porta por até 3 s, porque o Arduino do AGV só fala ~2,6 s depois de abrir a porta; (3) a busca ignora o adaptador CP210x do laser pelo USB, sem depender do atalho; (4) se o laser nem respondeu, a porta é fechada sem mandar STOP (o `close()` esperava). Validado: LIDAR 60 s fora volta em 4 s; os dois 30 s fora voltam certos mesmo com as portas trocadas.
 
 ---
 

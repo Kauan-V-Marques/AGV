@@ -95,7 +95,11 @@ def _candidate_arduino_ports():
             continue
         seen.add(key)
         dedup.append(port)
-    # A porta do RPLIDAR nunca e do Arduino: abri-la mandaria comandos ao laser.
+    # A porta do RPLIDAR nunca e do Arduino: abri-la mandaria comandos ao laser. Alem da porta
+    # aberta ou de /dev/rplidar, o adaptador do laser (CP210x) e reconhecido pelo USB: logo
+    # depois de religado, /dev/ttyUSB0 ja existe mas o atalho /dev/rplidar ainda nao.
+    if rplidar.LIDAR_ENABLED:
+        dedup = [p for p in dedup if (preferred and p == preferred) or not rplidar.e_adaptador_do_lidar(p)]
     return rplidar.portas_candidatas_ignoradas(dedup)
 
 
@@ -173,21 +177,38 @@ def _drain_arduino_input_locked(ser, max_lines: int = 12) -> list[str]:
     return lines
 
 
-def _probe_arduino_locked(ser) -> bool:
-    lines = _drain_arduino_input_locked(ser)
-    if any(("READY" in line or "PONG" in line or "OK" in line or line.startswith("STATUS:")) for line in lines):
-        return True
+IDENTIFICACAO_S = 3.0  # quanto ouvir a porta procurando o firmware depois da espera do reset
+PING_A_CADA_S = 1.0
 
-    try:
-        # Sem flush(): no Linux ele vira tcdrain, sem timeout. Um conversor USB-serial que
-        # para de esvaziar o buffer travava a thread aqui, segurando o lock da serial.
-        ser.write(b"PING\n")
-        time.sleep(0.25)
-    except Exception:
-        return False
 
-    lines = _drain_arduino_input_locked(ser)
+def _firmware_respondeu(lines: list[str]) -> bool:
     return any(("READY" in line or "PONG" in line or "OK" in line or line.startswith("STATUS:")) for line in lines)
+
+
+def _probe_arduino_locked(ser) -> bool:
+    """Ouve a porta ate o firmware se identificar (READY, PONG, OK ou STATUS).
+
+    Abrir a porta reinicia o Arduino, e no AGV ele so comeca a falar ~2,6 s depois
+    (bootloader + o setup, que pisca o LED 3 vezes). Uma espera fixa curta recusava
+    o Arduino de verdade; aqui o PING e repetido a cada segundo, por ate 3 s.
+    """
+    fim = time.monotonic() + IDENTIFICACAO_S
+    proximo_ping = time.monotonic()
+    while True:
+        if _firmware_respondeu(_drain_arduino_input_locked(ser)):
+            return True
+        agora = time.monotonic()
+        if agora >= fim:
+            return False
+        if agora >= proximo_ping:
+            try:
+                # Sem flush(): no Linux ele vira tcdrain, sem timeout. Um conversor USB-serial
+                # que para de esvaziar o buffer travava a thread aqui, segurando o lock.
+                ser.write(b"PING\n")
+            except Exception:
+                return False
+            proximo_ping = agora + PING_A_CADA_S
+        time.sleep(0.1)
 
 
 def _connect_arduino() -> bool:
@@ -213,6 +234,7 @@ def _connect_arduino() -> bool:
             _arduino_state["last_error"] = "nenhuma porta serial encontrada"
         return False
 
+    sem_resposta: list[str] = []
     for port in ports:
         try:
             ser = serial.Serial(
@@ -222,6 +244,8 @@ def _connect_arduino() -> bool:
                 write_timeout=0.1,
                 dsrdtr=False,
                 rtscts=False,
+                # Trava exclusiva: outra thread ou processo (ex.: o RPLIDAR) nao abre a mesma porta.
+                exclusive=True,
             )
             try:
                 ser.setDTR(False)
@@ -238,13 +262,21 @@ def _connect_arduino() -> bool:
                 pass
 
             with _arduino_lock:
+                identified = _probe_arduino_locked(ser)
+                if not identified:
+                    # Porta muda nao e o Arduino. Antes ela era aceita assim mesmo, e com o
+                    # Arduino desconectado a busca chegou a "conectar" na porta do RPLIDAR,
+                    # mandando 0,0 a 9600 baud por cima da varredura.
+                    sem_resposta.append(os.path.realpath(port))
+                    try:
+                        ser.close()
+                    except Exception:
+                        pass
+                    continue
                 _arduino_serial = ser
                 _arduino_state["connected"] = True
                 _arduino_state["port"] = os.path.realpath(port)
                 _arduino_state["last_error"] = None
-                identified = _probe_arduino_locked(ser)
-                if not identified:
-                    _arduino_state["last_error"] = "porta abriu, mas sem resposta do firmware"
             log.info("Arduino conectado em %s @ %s", os.path.realpath(port), _arduino_state["baud"])
             return True
         except Exception as exc:
@@ -255,6 +287,10 @@ def _connect_arduino() -> bool:
                 _arduino_state["connected"] = False
                 _arduino_state["last_error"] = f"falha ao abrir {port}: {detail}"
 
+    if sem_resposta:
+        with _arduino_lock:
+            _arduino_state["connected"] = False
+            _arduino_state["last_error"] = "nenhum firmware do AGV respondeu em " + ", ".join(sem_resposta)
     return False
 
 

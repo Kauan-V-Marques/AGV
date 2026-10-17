@@ -218,7 +218,9 @@ class TestAbrirLidar(unittest.TestCase):
 
     def test_identifica_liga_o_motor_e_comeca_a_varredura(self):
         falsa = SerialDoLidar()
-        ser, info = self._abrir(falsa)
+        with patch("serial.Serial", return_value=falsa) as abrir, patch.object(rplidar.time, "sleep"):
+            ser, info = rplidar._abrir("/dev/rplidar")
+        self.assertTrue(abrir.call_args.kwargs.get("exclusive"))  # ninguem mais abre a porta do laser
         self.assertIs(ser, falsa)
         self.assertEqual((info["firmware"], info["hardware"], info["saude"]), ("1.24", 5, "ok"))
         self.assertIn(False, falsa.dtr)                       # A1: DTR baixo liga o motor
@@ -242,6 +244,9 @@ class TestAbrirLidar(unittest.TestCase):
         falsa.respostas = []
         with self.assertRaises(RuntimeError):
             self._abrir(falsa)
+        # adaptador ainda subindo: depois do GET_INFO nao manda STOP nem motor, so fecha
+        self.assertEqual(falsa.escrito, [rplidar.comando(rplidar.CMD_STOP), rplidar.comando(rplidar.CMD_INFO)])
+        self.assertTrue(falsa.fechada)
 
 
 class TestSerialPresa(unittest.TestCase):
@@ -308,6 +313,16 @@ class TestPortaDoArduino(unittest.TestCase):
                 patch("glob.glob", side_effect=lambda padrao: ["/dev/ttyUSB0", "/dev/ttyUSB1"] if "ttyUSB" in padrao else []), \
                 patch("serial.tools.list_ports.comports", return_value=[]):
             self.assertEqual(arduino._candidate_arduino_ports(), ["/dev/ttyUSB0"])
+
+    def test_arduino_ignora_o_adaptador_do_lidar_mesmo_sem_o_atalho(self):
+        # Logo depois de religar o laser, /dev/ttyUSB0 ja existe mas /dev/rplidar ainda nao.
+        laser = type("Porta", (), {"device": "/dev/ttyUSB0", "vid": 0x10C4, "pid": 0xEA60})()
+        ftdi = type("Porta", (), {"device": "/dev/ttyUSB1", "vid": 0x0403, "pid": 0x6001})()
+        with patch.object(rplidar, "porta_reservada", return_value="/dev/rplidar"), \
+                patch.dict(os.environ, {"AGV_ARDUINO_PORT": "/dev/agv-arduino"}), \
+                patch("glob.glob", return_value=[]), \
+                patch("serial.tools.list_ports.comports", return_value=[laser, ftdi]):
+            self.assertEqual(arduino._candidate_arduino_ports(), ["/dev/agv-arduino", "/dev/ttyUSB1"])
 
     def test_arduino_nunca_tenta_as_portas_da_placa_mae(self):
         info = type("Porta", (), {"device": "/dev/ttyS9"})()
