@@ -80,12 +80,12 @@
 
 AGVs (veículos guiados automaticamente) movimentam materiais em armazéns e fábricas. Mesmo quando operam sozinhos, eles **precisam de um operador humano em situações de exceção**: um obstáculo inesperado no corredor, uma área não mapeada ou uma falha de percepção. Nesses momentos o operador assume o veículo **remotamente, olhando apenas para o vídeo da câmera embarcada**. Esse vídeo é plano: dificulta estimar a que distância estão prateleiras, paletes e pessoas, e favorece colisões.
 
-Este projeto é um **AGV de baixo custo** (Kinect v1 como sensor RGB-D, Arduino Uno controlando dois motores BLDC e um notebook Linux embarcado) com uma **interface de teleoperação que roda no navegador**, no PC ou no celular, sem instalar aplicativo. O servidor embarcado transmite o vídeo RGB, o mapa de profundidade e a telemetria, recebe os comandos de direção e os repassa ao Arduino. Há também um modo autônomo simples, que desvia de obstáculos usando a profundidade.
+Este projeto é um **AGV de baixo custo** (Kinect v1 como sensor RGB-D, um RPLIDAR que enxerga 360° em volta do veículo, Arduino Uno controlando dois motores BLDC e um notebook Linux embarcado) com uma **interface de teleoperação que roda no navegador**, no PC ou no celular, sem instalar aplicativo. O servidor embarcado transmite o vídeo RGB, o mapa de profundidade e a telemetria, recebe os comandos de direção e os repassa ao Arduino. Há também um modo autônomo simples, que desvia de obstáculos usando a profundidade do Kinect somada ao laser do RPLIDAR, que cobre as laterais, a traseira e a zona cega do Kinect (abaixo de cerca de 0,5 m).
 
 Duas funções vão além da teleoperação:
 
 - **Auto-aprendizado:** enquanto o operador dirige, o AGV grava o que ele fez diante de cada leitura de profundidade, treina uma rede neural e passa a dirigir sozinho no modo **IA**. Quando a IA erra, o operador corrige pelas mesmas teclas; as correções, as recompensas (avançar com caminho livre) e as penalidades (chegar perto de obstáculo, parada de emergência) entram no treino seguinte.
-- **Auto-mapeamento:** sem encoders nas rodas, o AGV estima quanto andou e girou casando as leituras de profundidade do Kinect (odometria visual) e monta um mapa 2D do ambiente, que pode ser salvo e consultado depois.
+- **Auto-mapeamento:** sem encoders nas rodas, o AGV estima quanto andou e girou casando as varreduras de 360° do RPLIDAR (ou, sem ele, as leituras de profundidade do Kinect) e monta um mapa 2D do ambiente, que pode ser salvo e consultado depois.
 
 O que a IA aprende e os mapas salvos ficam em bancos SQLite no notebook e continuam lá depois de desligar o sistema.
 
@@ -133,6 +133,7 @@ Desenvolver e avaliar uma interface de teleoperação baseada em Realidade Aumen
 | Projetar uma zona de segurança no piso do vídeo | Faixa no piso muda de cor conforme a distância | ⬜ |
 | Registrar métricas de experimento (tempo, colisões, RTT, FPS) | Arquivo de log por sessão de teste | ⬜ |
 | Mostrar um aviso quando a frente não tiver leitura válida (zona não medida) | Aviso no vídeo em vez de omitir a informação | ⬜ |
+| Perceber obstáculos em 360° (laterais, traseira e zona cega do Kinect) com o RPLIDAR | Radar 360° em *Telemetria* e no HUD; autônomo e IA usam as folgas do laser | ✅ |
 | Verificar tecnicamente a precisão e a estabilidade do registro | Erro de registro ≤ 10 px e IoU ≥ 0,7; erro de distância ≤ 5% até 2,5 m; desvio ≤ 3 px parado; persistência ≥ 95%; queda de FPS < 10% | ⬜ |
 | Avaliar com operadores (SUS e NASA-TLX), HUD × HUD + RA | 20 operadores, desenho intrassujeitos contrabalanceado; dados coletados e analisados | ⬜ |
 
@@ -180,7 +181,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | RF02 | Vídeo RGB ao vivo | Stream MJPEG da câmera RGB do Kinect v1 | ✅ |
 | RF03 | Mapa de profundidade | Profundidade do Kinect colorida (mapa *JET*: quente = perto) | ✅ |
 | RF04 | Telemetria de distâncias | Distância frontal e folgas à esquerda, ao centro e à direita, em metros | ✅ |
-| RF05 | HUD em tela cheia | Vídeo RGB em tela cheia com estado do sistema, distâncias, comando ativo, FPS e miniatura da profundidade | ✅ |
+| RF05 | HUD em tela cheia | Vídeo RGB em tela cheia com estado do sistema, distâncias (inclusive a folga traseira do LIDAR), comando ativo, FPS, miniatura da profundidade, vídeo da câmera traseira com a detecção facial e radar 360° do RPLIDAR | ✅ |
 | RF06 | Controle por teclado | W/↑ frente, S/↓ ré, A/←/E esquerda, D/→ direita | ✅ |
 | RF07 | Joystick virtual | Stick de toque no celular, também disponível dentro do HUD | ✅ |
 | RF08 | Modo autônomo | Segue em frente e desvia para o lado mais livre usando a profundidade (regras por distância) | ✅ |
@@ -215,6 +216,11 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | RF37 | Registro do experimento | Gravar tempo, colisões, intervenções, RTT e FPS de cada sessão, com as paradas por falha técnica (perda de vídeo, watchdog, queda de comunicação) registradas à parte | ⬜ |
 | RF38 | Alternância de condição | Ligar/desligar as sobreposições para comparar HUD × HUD + RA, com o mesmo processamento no servidor nas duas condições | ⬜ |
 | RF39 | Aviso de zona não medida | Quando a região à frente não tiver leitura válida (abaixo do alcance mínimo do Kinect), mostrar um aviso no vídeo em vez de omitir a informação | ⬜ |
+| RF40 | RPLIDAR 360° | Driver serial próprio (protocolo Slamtec, sem SDK) para A1/A2/A3: liga o motor, lê as voltas, converte para o referencial do AGV e calcula a folga até a borda do chassi em 8 setores (frente, diagonais, lados e traseira) | ✅ |
+| RF41 | Fusão Kinect + LIDAR | Autônomo e IA usam a menor das duas leituras à frente (o laser cobre a zona cega do Kinect); o autônomo não gira para o lado em que o chassi está encostado e dá ré quando a frente e as diagonais fecham e a traseira está livre; a IA não dá ré com obstáculo atrás | ✅ |
+| RF42 | Mapa com LIDAR | Com o laser online, a odometria casa as voltas de 360° e o mapa recebe o laser e o Kinect, cada um da sua posição no AGV; sem o laser, volta a usar só o Kinect | ✅ |
+| RF43 | Radar 360° | Pontos do laser em volta do AGV e as 8 folgas, na página *Telemetria* e no HUD; indicador LIDAR na barra superior | ✅ |
+| RF44 | Webcam no lugar da ZED | Sem ZED conectada, a câmera traseira e o reconhecimento facial usam qualquer outra webcam (ex.: a integrada do notebook), nunca o Kinect; o vídeo dela também aparece no HUD | ✅ |
 
 **Legenda:** ✅ Implementado · 🚧 Em desenvolvimento · ⬜ Planejado · ❌ Cancelado
 
@@ -236,6 +242,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | RNF10 | Persistência | Aprendizado e mapas em SQLite (`logs/aprendizado.db`, `logs/mapas.db`); um banco ilegível desliga só aquele recurso, sem apagar o arquivo |
 | RNF11 | Desempenho | Gravação de exemplos e decisão da IA em cerca de 3 ms por quadro; mapeamento em 16 a 38 ms por quadro a 4 quadros/s (medido em simulação, seção 22.3). Sem dependências pesadas: NumPy puro |
 | RNF12 | Segurança da IA | A rede nunca comanda os motores direto: passa pela camada de segurança, e o operador pode corrigir ou acionar a parada de emergência a qualquer momento |
+| RNF13 | Sensores complementares | O RPLIDAR soma ao Kinect, não o substitui: sem Kinect o autônomo e a IA param (o laser só vê um plano); sem LIDAR tudo funciona como antes, só com o Kinect |
 
 ---
 
@@ -250,7 +257,8 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | NumPy | ≥ 1.24 (testado 2.2.6) | Distâncias da profundidade, rede neural do auto-aprendizado e ICP do auto-mapeamento |
 | face_recognition | ≥ 1.3.0 (testado 1.3.0) | Detecção (HOG) e descritores faciais de 128 dimensões |
 | dlib | 20.0.1 (compilado na instalação do face_recognition) | Motor de visão do face_recognition |
-| PySerial | ≥ 3.5 (testado 3.5) | Comunicação serial com o Arduino |
+| PySerial | ≥ 3.5 (testado 3.5) | Comunicação serial com o Arduino e com o RPLIDAR |
+| Protocolo serial do RPLIDAR (Slamtec) | — (implementado em `hardware/rplidar.py`, sem SDK) | Informações, saúde, motor (DTR no A1, PWM no A2/A3) e varredura padrão de 5 bytes por amostra |
 | libfreenect | 0.5.3 (apt: `libfreenect-dev`) | Biblioteca C do Kinect v1 |
 | Driver Python `freenect` | compilado do OpenKinect/libfreenect **v0.7.5** com Cython ≥ 3 ([`scripts/instalar_freenect_python.sh`](scripts/instalar_freenect_python.sh)) | Acesso ao Kinect pelo Python: RGB, profundidade, tilt e acelerômetro |
 | FFmpeg | Pacote da distribuição (opcional) | Captura alternativa da ZED quando o OpenCV não abre o dispositivo |
@@ -271,12 +279,13 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 
 | Equipamento | Fabricante / modelo | Característica relevante | Utilização |
 |---|---|---|---|
-| Sensor RGB-D | Microsoft Kinect para Xbox 360 (Kinect v1) ⚠️ CONFERIR modelo | RGB 640×480, profundidade por luz estruturada (11 bits), motor de tilt, acelerômetro; precisa de fonte própria | Vídeo do operador, distâncias e modo autônomo |
-| Câmera traseira | Stereolabs ZED ⚠️ CONFERIR modelo | Câmera estéreo USB (V4L2); o reconhecimento usa a metade esquerda do quadro | Vídeo da traseira e reconhecimento facial |
-| Microcontrolador | Arduino Uno | Serial USB 9600 baud; PWM nos pinos 5 e 9 | Recebe `aceleração,direção` e aciona os motores |
+| Sensor RGB-D | Microsoft Kinect v1 (no AGV atual, o modelo *Kinect for Windows*: motor USB 045e:02c2) | RGB 640×480, profundidade por luz estruturada (11 bits), motor de tilt, acelerômetro; precisa de fonte própria | Vídeo do operador, distâncias e modo autônomo |
+| Câmera traseira | Stereolabs ZED ⚠️ CONFERIR modelo — ou, sem ela, a webcam integrada do notebook | Câmera estéreo USB (V4L2); o reconhecimento usa a metade esquerda do quadro | Vídeo da traseira e reconhecimento facial |
+| LIDAR 2D | Slamtec RPLIDAR, família A1/A2 (GET_INFO: modelo 0x26, firmware 1.24, hardware 5) ⚠️ CONFERIR modelo na etiqueta | 360°, serial 115200 baud pelo adaptador CP2102 (`/dev/rplidar`); cerca de 13 voltas/s e 120 pontos por volta com o PWM padrão; o software usa de 0,15 m a 8 m | Folgas em 360°, autônomo, segurança da IA, mapa e radar do painel |
+| Microcontrolador | Arduino Uno (no AGV atual, ligado por um conversor USB FTDI FT232R: `/dev/agv-arduino`) | Serial USB 9600 baud; PWM nos pinos 5 e 9 | Recebe `aceleração,direção` e aciona os motores |
 | Controladores de motor | 2× controlador BLDC YWMJZEU | Entradas PWM, DIR e BRAKE | Potência dos motores direito e esquerdo |
 | Motores | 2× motor BLDC ⚠️ PREENCHER modelo | Tração diferencial | Movimento do AGV |
-| Computador embarcado | Notebook ⚠️ PREENCHER fabricante/modelo | Linux x86_64 ⚠️ PREENCHER distribuição e versão (ex.: Ubuntu 24.04) | Roda o servidor, Kinect, ZED e serial. Todo o software atual foi desenvolvido, testado e validado nele |
+| Computador embarcado | Notebook ⚠️ PREENCHER fabricante/modelo | Linux x86_64, Ubuntu 22.04.5 LTS (kernel 6.8), Python 3.10.12 | Roda o servidor, Kinect, RPLIDAR, câmera traseira e serial. Todo o software atual foi desenvolvido, testado e validado nele |
 | Dispositivo do operador | ⚠️ PREENCHER (PC e/ou celular usados nos testes) | Navegador com Wi-Fi | Painel web e HUD |
 
 > **Raspberry Pi 5 → notebook.** O AGV foi orçado e construído originalmente para uma Raspberry Pi 5, que queimou durante o desenvolvimento. Ela foi substituída por um notebook Linux embarcado, e tudo o que está neste repositório roda e foi validado no notebook, não na Raspberry Pi (ver [Problema 9](#problema-9--raspberry-pi-5-queimou)).
@@ -317,12 +326,13 @@ Servidor Flask (pc_agv/web/rotas.py)
 | Thread | Módulo | Ciclo | Função |
 |---|---|---|---|
 | `agv-kinect` (+ `agv-kinect-proc`) | `hardware/kinect.py` | Callback do Kinect | Recebe RGB e profundidade; uma thread separada calcula as distâncias para não travar os callbacks; ajusta o tilt |
-| `agv-zed` | `hardware/zed.py` | Até 60 fps | Abre a ZED (OpenCV V4L2 ou FFmpeg) e desenha a caixa do rosto reconhecido |
+| `agv-lidar` | `hardware/rplidar.py` | Cada volta do laser (~13 Hz) | Abre o RPLIDAR, liga o motor, lê as amostras, publica a volta no referencial do AGV e as folgas por setor; reconecta sozinho |
+| `agv-zed` | `hardware/zed.py` | Até 60 fps | Abre a ZED ou, sem ela, outra webcam (OpenCV V4L2 ou FFmpeg) e desenha a caixa do rosto reconhecido |
 | `agv-zed-face` | `visao/rostos.py` | 0,7 s | Procura a pessoa selecionada no quadro da ZED |
 | `agv-autopilot` | `controle.py` | 0,18 s | Calcula velocidade e direção no modo autônomo (regras) ou IA (rede treinada + segurança) |
 | `agv-control` | `controle.py` | 0,12 s | Escolhe o comando (manual, autônomo, IA, correção do operador ou watchdog) e envia ao Arduino |
 | `agv-aprendizado` | `aprendizado/servico.py` | 0,2 s | Grava exemplos; a cada 10 s poda o banco e decide se treina sozinho (o treino roda em `agv-treino`) |
-| `agv-mapeamento` | `mapeamento/servico.py` | 0,25 s | Com o mapeamento ligado: varredura, odometria visual e atualização do mapa |
+| `agv-mapeamento` | `mapeamento/servico.py` | 0,25 s | Com o mapeamento ligado: varredura (laser ou Kinect), odometria por casamento de varreduras e atualização do mapa |
 
 ### Ligações físicas
 
@@ -337,7 +347,8 @@ flowchart LR
         NB["Notebook Linux x86_64<br/>servidor Flask, porta 5000"]
         KIN["Kinect v1<br/>RGB-D, tilt e acelerômetro"]
         FONTE["Fonte própria<br/>do Kinect"]
-        ZED["Câmera ZED<br/>traseira"]
+        ZED["Câmera ZED ou webcam<br/>traseira"]
+        LID["RPLIDAR<br/>laser 360°"]
         ARD["Arduino Uno<br/>sketch_may13a"]
         C1["Controlador BLDC<br/>direito"]
         C2["Controlador BLDC<br/>esquerdo"]
@@ -348,6 +359,7 @@ flowchart LR
     NB <-->|"USB: libfreenect"| KIN
     FONTE --- KIN
     NB <-->|"USB: V4L2"| ZED
+    NB <-->|"USB serial 115200 baud<br/>(CP2102, /dev/rplidar)"| LID
     NB <-->|"USB serial 9600 baud:<br/>aceleração,direção"| ARD
     ARD -->|"PWM 5, DIR 4, BRAKE 3"| C1
     ARD -->|"PWM 9, DIR 10, BRAKE 11"| C2
@@ -463,6 +475,7 @@ AGV/
 ├── pc_agv/                        # software do notebook do AGV
 │   ├── iniciar_sistema.py         # ponto de entrada: cria e para o servidor
 │   ├── config.py                  # logging e variáveis AGV_*
+│   ├── arquivo_env.py             # lê o agv.env (configuração local) no launcher
 │   ├── estado.py                  # estado compartilhado entre threads + locks
 │   ├── util.py                    # clamp() e now()
 │   ├── runtime.py                 # sobe e encerra as threads
@@ -486,16 +499,18 @@ AGV/
 │   │   └── servico.py             # thread do mapeamento e comandos da API
 │   ├── hardware/
 │   │   ├── kinect.py              # captura RGB-D, tilt e liberação do USB
-│   │   ├── zed.py                 # captura da câmera ZED
+│   │   ├── zed.py                 # captura da câmera ZED (ou de outra webcam)
+│   │   ├── rplidar.py             # RPLIDAR: protocolo serial, voltas e estado do laser
 │   │   └── arduino.py             # serial e protocolo aceleração,direção
 │   ├── visao/
 │   │   ├── profundidade.py        # distâncias e mapa colorido (funções puras)
+│   │   ├── lidar.py               # volta do laser no referencial do AGV e folgas por setor (funções puras)
 │   │   └── rostos.py              # banco de rostos e reconhecimento
 │   └── web/
 │       ├── rotas.py               # aplicação Flask e API REST
 │       ├── mjpeg.py               # streams MJPEG
 │       └── static/                # painel.html, painel.css, painel.js e js/ (um módulo por assunto)
-├── tests/                         # 225 testes, todos sem hardware (seção 22.1)
+├── tests/                         # 257 testes, todos sem hardware (seção 22.1)
 │   ├── apoio.py                   # serial falsa, parada controlada dos loops, isolamento do estado e dos bancos
 │   ├── simulador_kinect.py        # quadros de profundidade simulados numa sala (testes do mapa)
 │   └── test_*.py                  # controle, API, serial, rostos, captura, aprendizado, mapa...
@@ -509,7 +524,11 @@ AGV/
 ├── launch_production.spec         # receita do PyInstaller (executável único)
 ├── requirements.txt               # dependências Python (faixas testadas)
 ├── ruff.toml                      # regras do lint
-├── scripts/instalar_freenect_python.sh  # compila o driver Python do Kinect
+├── scripts/
+│   ├── instalar_freenect_python.sh  # compila o driver Python do Kinect
+│   ├── instalar_regras_udev.sh      # portas fixas, ModemManager longe delas e blacklist do gspca_kinect
+│   └── 99-agv-serial.rules          # regras udev: /dev/agv-arduino e /dev/rplidar
+├── agv.env.exemplo                # modelo da configuração local (copiar para agv.env, fora do Git)
 ├── Dockerfile                     # imagem python:3.11-slim-bookworm + libfreenect
 ├── docker-compose.yml             # execução no notebook do AGV (Linux, com hardware)
 ├── docker-compose.windows.yml     # só o painel, sem hardware (Docker Desktop)
@@ -521,8 +540,8 @@ AGV/
 | Pasta / arquivo | Finalidade |
 |---|---|
 | `pc_agv/` | Todo o software que roda no notebook do AGV, dividido por responsabilidade (seção 13) |
-| `pc_agv/hardware/` | Acesso ao Kinect, à ZED e ao Arduino |
-| `pc_agv/visao/` | Processamento de imagem: profundidade e rostos |
+| `pc_agv/hardware/` | Acesso ao Kinect, ao RPLIDAR, à câmera traseira e ao Arduino |
+| `pc_agv/visao/` | Processamento dos sensores: profundidade, varredura do laser e rostos |
 | `pc_agv/aprendizado/` | Auto-aprendizado: exemplos, rede neural, recompensa, segurança e banco |
 | `pc_agv/mapeamento/` | Auto-mapeamento: varredura, ICP, odometria visual, mapa de ocupação e banco |
 | `pc_agv/web/` | Servidor HTTP, streams e arquivos do painel |
@@ -542,13 +561,16 @@ AGV/
 | `launch_production.py` | Garante instância única, abre um terminal visível para os logs, libera o Kinect, sobe o servidor, espera `/api/status` responder e abre o navegador |
 | `pc_agv/iniciar_sistema.py` | Ponto de entrada: `AGVServerController`, `create_server`, `serve` e `main` |
 | `pc_agv/config.py` | Configuração de logging e leitura de todas as variáveis `AGV_*` |
-| `pc_agv/estado.py` | Estado compartilhado (`state`, `control_state`, `autopilot_state`, `settings`), cada um com seu *lock*, e o `stop_event` |
-| `pc_agv/runtime.py` | `start_runtime` / `stop_runtime`: abre os bancos, sobe e encerra as sete threads |
+| `pc_agv/estado.py` | Estado compartilhado (`state`, `control_state`, `autopilot_state`, `lidar_state`, `settings`), cada um com seu *lock*, e o `stop_event` |
+| `pc_agv/arquivo_env.py` | `carregar`: aplica o `agv.env` da raiz (sem sobrescrever variáveis já definidas); chamado só pelo launcher |
+| `pc_agv/runtime.py` | `start_runtime` / `stop_runtime`: abre os bancos, sobe e encerra as oito threads |
 | `pc_agv/controle.py` | `compute_autopilot_command` (regras do autônomo), `autopilot_loop` (autônomo ou IA) e `control_loop` (manual, autônomo, IA, correção ou watchdog → Arduino) |
 | `pc_agv/telemetria.py` | `status_snapshot`: junta o estado de todos os módulos para `/api/status` |
 | `pc_agv/hardware/kinect.py` | `capture_loop`, estabilização e tilt manual (`command_kinect_tilt`), `release_kinect_usb_claims` (descarrega `gspca_kinect` etc.) e `request_reconnect` |
-| `pc_agv/hardware/zed.py` | Descoberta da ZED e `capture_loop` (OpenCV V4L2 ou FFmpeg) |
+| `pc_agv/hardware/zed.py` | Descoberta da ZED (ou de outra webcam, nunca o Kinect) e `capture_loop` (OpenCV V4L2 ou FFmpeg) |
+| `pc_agv/hardware/rplidar.py` | `comando`, `decodificar` (amostras de 5 bytes com realinhamento), `lidar_loop` (abre, liga o motor, lê as voltas, reconecta), `leitura_recente` (volta com menos de 0,6 s) e `porta_reservada` (o Arduino nunca abre a porta do laser) |
 | `pc_agv/hardware/arduino.py` | Conexão serial, `speed_steering_to_payload` (−100..100 → `aceleração,direção`), `send_to_arduino` com limite de velocidade e estado do link |
+| `pc_agv/visao/lidar.py` | Funções puras: `para_agv` (ângulo horário do laser → referencial do AGV, alcance e máscara) e `folgas` (distância da borda do chassi ao obstáculo mais próximo em 8 setores) |
 | `pc_agv/visao/profundidade.py` | Funções puras: `depth_segment_distance`, `compute_depth_metrics` e `depth_to_colormap` |
 | `pc_agv/visao/rostos.py` | Banco de rostos, `face_worker_loop`, `offer_frame` (marcação sobre o vídeo da ZED) e `register_face` |
 | `pc_agv/web/rotas.py` | Aplicação Flask: painel e API REST; as rotas só traduzem HTTP e chamam os módulos |
@@ -641,7 +663,8 @@ Quase todos os módulos também importam `config.py` (variáveis `AGV_*`) e `uti
 |---|---|---|
 | GET | `/` | Painel web |
 | GET | `/video` · `/depth_map` · `/zed` | Streams MJPEG (RGB, profundidade, ZED) |
-| GET | `/api/status` | Telemetria completa em JSON |
+| GET | `/api/status` | Telemetria completa em JSON (inclui a seção `lidar`: estado, voltas/s e folgas) |
+| GET | `/api/lidar` | Última volta do RPLIDAR (pontos no referencial do AGV), folgas, tamanho do chassi e montagem |
 | GET | `/api/access_link` | Endereço do painel na rede local |
 | POST | `/api/control` | Modo (`manual`/`auto`/`ia`), velocidade e direção; `ia` sem modelo responde 409; no modo IA o comando vale como correção |
 | POST | `/api/stop` | Parada total |
@@ -824,7 +847,13 @@ cd AGV
 pip3 install -r requirements.txt --break-system-packages   # compila o dlib: leva alguns minutos
 PIP_ARGS=--break-system-packages bash scripts/instalar_freenect_python.sh   # driver Python do Kinect
 sudo usermod -aG dialout $USER                              # acesso à serial (refaça o login)
+sudo bash scripts/instalar_regras_udev.sh                   # /dev/agv-arduino, /dev/rplidar e libera o Kinect
+cp agv.env.exemplo agv.env                                  # configuração local (portas, FPS, montagem do LIDAR)
 ```
+
+> Testado também no **Ubuntu 22.04 com Python 3.10** (o notebook do AGV): as mesmas faixas do `requirements.txt` instalam sem mudança.
+>
+> **Por que o script udev:** ele dá nomes fixos às portas (a ordem `ttyUSB0`/`ttyUSB1` muda conforme a ordem de ligar os cabos), impede o ModemManager de mandar comandos AT ao Arduino e ao laser e coloca o `gspca_kinect` na blacklist, para o Kinect ficar livre para a libfreenect.
 
 > Se preferir um ambiente virtual: `python3 -m venv .venv`, `.venv/bin/pip install -r requirements.txt` e `PYTHON=.venv/bin/python bash scripts/instalar_freenect_python.sh`. O launcher usa a `.venv` automaticamente se ela existir.
 
@@ -857,6 +886,18 @@ sudo usermod -aG dialout $USER                              # acesso à serial (
 | `AGV_KINECT_AVANCO_M` | `0` | Distância do eixo das rodas até o Kinect (o painel do Mapa também ajusta, em cm) |
 | `AGV_KINECT_DEPTH_FX` / `AGV_KINECT_DEPTH_CX` | `594.21` / `339.31` | Parâmetros intrínsecos da câmera de profundidade (referência do Kinect v1) |
 | `AGV_MAPA_HZ` / `AGV_MAPA_RESOLUCAO_M` / `AGV_MAPA_TAMANHO_M` | `4` / `0.05` / `30` | Quadros por segundo do mapeamento, tamanho da célula e do mapa |
+| `AGV_LIDAR_ENABLED` | `1` | `0` desliga o RPLIDAR |
+| `AGV_LIDAR_PORT` / `AGV_LIDAR_BAUD` | `/dev/rplidar` ou a 1ª porta CP210x / `115200` | Porta e baud do laser (A1/A2: 115200; A3: 256000) |
+| `AGV_LIDAR_MOTOR_PWM` | `660` | Rotação nos modelos com PWM (0–1023): mais lento = mais pontos por volta |
+| `AGV_LIDAR_FRENTE_GRAUS` | `0` | Ângulo do laser (sentido horário, como ele mede) que aponta para a frente do AGV |
+| `AGV_LIDAR_X_M` / `AGV_LIDAR_Y_M` | `0` / `0` | Posição do laser em relação ao eixo das rodas (x para a frente, y para a esquerda) |
+| `AGV_LIDAR_MIN_M` / `AGV_LIDAR_MAX_M` | `0.15` / `8.0` | Leituras fora dessa faixa são descartadas (perto demais = o próprio chassi) |
+| `AGV_LIDAR_MASCARA` | vazio | Faixas de ângulo do AGV a ignorar, ex.: `170:190,85:95` (colunas que ficam na frente do laser) |
+| `AGV_FRENTE_M` / `AGV_TRASEIRA_M` / `AGV_LARGURA_M` | `0.30` / `0.30` / `0.50` | Chassi em volta do eixo das rodas: as folgas do laser são medidas da borda |
+| `AGV_ZED_WEBCAM_GENERICA` | `1` | Sem ZED, usa outra webcam como câmera traseira (`0` = só ZED) |
+| `AGV_ENV_ARQUIVO` | `agv.env` na raiz | Arquivo de configuração local lido pelo launcher |
+
+**Arquivo `agv.env`.** Em vez de exportar variáveis, copie `agv.env.exemplo` para `agv.env` e ajuste; o launcher lê o arquivo ao iniciar, e uma variável já exportada no ambiente tem prioridade.
 
 As demais variáveis são ajustes finos (tilt do Kinect, resolução e FPS da ZED, limiares do reconhecimento facial, ciclos de controle, PWM mínimo dos motores) e estão em [`pc_agv/config.py`](pc_agv/config.py), com o valor padrão ao lado; as da serial ficam em [`pc_agv/hardware/arduino.py`](pc_agv/hardware/arduino.py).
 
@@ -884,7 +925,7 @@ docker compose up --build        # a 1ª build compila o dlib e demora
 python3 launch_production.py
 ```
 
-O launcher libera o Kinect, sobe o servidor, espera a API responder (até 25 s), abre `http://127.0.0.1:5000` no navegador e mantém os logs no terminal. **Ctrl+C** encerra.
+O launcher lê o `agv.env`, libera o Kinect, sobe o servidor, espera a API responder (até 25 s), abre `http://127.0.0.1:5000` no navegador e mantém os logs no terminal. **Ctrl+C** encerra.
 
 ### C) Windows/Mac, só o painel
 
@@ -925,13 +966,13 @@ O painel tem um **menu lateral** (no celular, no botão ☰ do topo) com as seç
 ### 17.1 Dirigir
 
 1. **Ligue o AGV** e inicie o sistema (seção 16). O navegador abre o painel.
-2. **Confira os indicadores do topo:** Kinect, ZED e Arduino em verde. Se o Kinect estiver offline, use **Reconectar Kinect** em *Configurações*.
+2. **Confira os indicadores do topo:** Kinect, LIDAR, ZED (ou webcam) e Arduino em verde. Se o Kinect estiver offline, use **Reconectar Kinect** em *Configurações*.
 3. **Para dirigir de outro dispositivo:** em *Configurações → Abrir em outro dispositivo*, clique em **Copiar** e abra o endereço no PC ou celular do operador, na mesma rede Wi-Fi.
 4. **Escolha o modo** no quadro *Controle do AGV*: **Manual** (padrão), **Autônomo** ou **IA** (liberado depois do primeiro treino, seção 17.2).
 5. **No modo manual:**
    - no PC: **W/↑** frente, **S/↓** ré, **A/←/E** esquerda, **D/→** direita;
    - no celular: arraste o **joystick virtual** e solte para parar.
-6. **Câmeras:** clique na miniatura para trocá-la com o vídeo principal; **Foto** salva um PNG; **HUD** abre o vídeo em tela cheia com distâncias, comando, FPS e a miniatura da profundidade (sai com **ESC** ou **Sair**).
+6. **Câmeras:** clique na miniatura para trocá-la com o vídeo principal; **Foto** salva um PNG; **HUD** abre o vídeo em tela cheia com distâncias, comando, FPS, a miniatura da profundidade, o vídeo traseiro com a detecção facial e o radar 360° do LIDAR (sai com **ESC** ou **Sair**).
 7. **Proximidade:** os setores ao lado do vídeo mudam de cor conforme a distância (verde, amarelo, laranja, vermelho) e o gráfico mostra os últimos 60 s.
 8. **Ajustes** (*Configurações*): tilt do Kinect (**Subir**, **Centralizar**, **Descer**), estabilização, velocidade máxima, tema e bipe.
 9. **Em qualquer emergência**, clique em **PARADA DE EMERGÊNCIA** (também no HUD).
@@ -1022,23 +1063,38 @@ A parada de emergência no modo IA também marca a última ação da IA com pena
 
 ### Regras do modo autônomo
 
-`compute_autopilot_command` em `controle.py`, chamado a cada 0,18 s. Velocidade e direção vão de −100 a 100 (% do PWM):
+`compute_autopilot_command` em `controle.py`, chamado a cada 0,18 s. Velocidade e direção vão de −100 a 100 (% do PWM). Com o RPLIDAR online (volta com menos de 0,6 s), as distâncias do Kinect são combinadas com as folgas do laser; sem ele, valem só as do Kinect:
+
+| Leitura usada | Kinect | RPLIDAR |
+|---|---|---|
+| Frente | janela central | corredor da largura do AGV à frente do para-choque (menor das duas) |
+| Diagonais (esq./dir.) | janelas laterais | canto dianteiro até o obstáculo (menor das duas) |
+| Lados | — | lateral do chassi até o obstáculo |
+| Traseira | — | corredor atrás e cantos traseiros |
 
 ```mermaid
 flowchart TD
-    A["agv-autopilot<br/>modo Autônomo"] --> B{"Kinect conectado e<br/>com distância medida?"}
+    A["agv-autopilot<br/>modo Autônomo"] --> B{"Kinect conectado e com distância<br/>(do Kinect ou do LIDAR)?"}
     B -- Não --> B1["Para: 0 / 0<br/>(sem-kinect, sem-depth)"]
-    B -- Sim --> C{"Distância à frente<br/>(janela central)"}
-    C -- "menor que 0,35 m" --> D["Gira parado<br/>velocidade 0, direção ±70"]
+    B -- Sim --> C{"Distância à frente<br/>(menor entre Kinect e LIDAR)"}
+    C -- "menor que 0,35 m" --> R{"Diagonais também abaixo de 0,35 m<br/>e traseira livre (≥ 0,40 m)?"}
+    R -- Sim --> R1["Ré lenta: velocidade −25<br/>(re-encurralado)"]
+    R -- Não --> D["Gira parado<br/>velocidade 0, direção ±70"]
     C -- "0,35 a 0,60 m" --> E["Desvio curto<br/>velocidade 18, direção ±65"]
     C -- "0,60 a 0,95 m" --> F["Desvio suave<br/>velocidade 32, direção ±45"]
-    C -- "0,95 m ou mais" --> G["Livre: velocidade 48<br/>direção = (folga dir − folga esq) × 70,<br/>limitada a ±35; abaixo de 8 vira 0"]
-    D --> H["Vira para o lado mais livre<br/>(direita se a folga direita ≥ esquerda)"]
+    C -- "0,95 m ou mais" --> G["Livre: velocidade 48<br/>direção = (diag. dir − diag. esq) × 70,<br/>limitada a ±35; abaixo de 8 vira 0"]
+    G --> L{"Lateral do chassi a menos<br/>de 0,12 m de algo?"}
+    L -- Sim --> L1["Afasta-se da parede<br/>velocidade 40, direção ±25"]
+    D --> H["Vira para a diagonal mais livre,<br/>exceto se o chassi está encostado<br/>daquele lado (menos de 0,12 m)"]
     E --> H
     F --> H
     H --> I["agv-control envia ao Arduino"]
-    G --> I
+    L -- Não --> I
+    L1 --> I
+    R1 --> I
 ```
+
+O laser sozinho não dirige: ele só enxerga um plano (não vê mesa, degrau ou objeto baixo), então sem Kinect o autônomo para.
 
 ### Sequência de um comando com o HUD aberto
 
@@ -1147,11 +1203,14 @@ flowchart TD
     A{"Há modelo ativo, Kinect conectado<br/>e quadro com menos de 0,6 s?"} -- Não --> A1["0 / 0"]
     A -- Sim --> B["Rede 48-32-16-2 sobre a miniatura<br/>da profundidade (+ ruído se Explorar)"]
     B --> C["Limita a velocidade entre −min(30, máx. da IA)<br/>e a velocidade máxima da IA;<br/>valores abaixo de 6 viram 0"]
-    C --> D{"Distância à frente<br/>conhecida?"}
+    C --> D{"Distância à frente conhecida?<br/>(menor entre Kinect e LIDAR)"}
     D -- Não --> D1["0 / 0<br/>ia-sem-distancia"]
     D -- Sim --> E{"Menos de 0,35 m e<br/>indo para a frente?"}
     E -- Sim --> E1["Velocidade 0, mantém a direção<br/>ia-bloqueio-frente"]
-    E -- Não --> F{"Menos de 0,60 m e<br/>velocidade acima de 25?"}
+    E -- Não --> T{"LIDAR: menos de 0,35 m<br/>atrás e dando ré?"}
+    T -- Sim --> T1["Velocidade 0, mantém a direção<br/>ia-bloqueio-tras"]
+    T1 --> H
+    T -- Não --> F{"Menos de 0,60 m e<br/>velocidade acima de 25?"}
     F -- Sim --> F1["Velocidade 25<br/>ia-devagar-perto"]
     F -- Não --> G["Comando da rede<br/>sem alteração"]
     E1 --> H["agv-control: vale este comando,<br/>a menos que o operador esteja corrigindo"]
@@ -1191,15 +1250,21 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
+    L["Volta do RPLIDAR<br/>360°, 0,15–8 m"] --> S{"LIDAR online?"}
     A["Quadro de profundidade<br/>do Kinect"] --> B["Varredura 2D<br/>faixa 40–60% da altura,<br/>160 direções, 0,5–4,5 m"]
-    B --> C["ICP contra a varredura-chave<br/>(várias partidas, ponto a reta,<br/>sem andar de lado)"]
+    S -- Sim --> C["ICP contra a varredura-chave<br/>(várias partidas, ponto a reta,<br/>sem andar de lado)"]
+    S -- Não --> B
+    B -- "só sem LIDAR" --> C
     C --> D{"Casamento confiável?"}
     D -- Sim --> E["Atualiza a pose do AGV"]
     D -- Não --> F["Em movimento: segue o último<br/>movimento · Parado: mantém"]
-    E --> G["Soma a varredura ao mapa<br/>(log-odds, células de 5 cm)"]
+    E --> G["Soma ao mapa (log-odds, células de 5 cm):<br/>o laser a partir da posição dele<br/>e o Kinect (o que está fora do plano do laser)"]
+    B -. "com LIDAR, só entra no mapa" .-> G
     G --> H["Página Mapa<br/>PNG + trajeto + AGV"]
     G --> I[("logs/mapas.db<br/>ao salvar")]
 ```
+
+Trocar de sensor no meio do mapa (o laser desconectou ou voltou) recomeça a referência da odometria na pose atual: varreduras de sensores diferentes não se casam. A página *Mapa* mostra no indicador **Odometria** qual sensor está sendo usado.
 
 ### Cadastro e busca de um rosto
 
@@ -1323,7 +1388,7 @@ http://IP_DO_AGV:5000
 ![HUD em tela cheia](docs/images/hud-tela-cheia.png)
 
 - **Finalidade:** dirigir olhando só para o vídeo, com as informações do sensor sobrepostas.
-- **Elementos:** vídeo RGB em tela cheia, chips de modo/Kinect/serial (topo), distâncias Dist/Esq/Cen/Dir, comando e FPS (canto inferior esquerdo), miniatura da profundidade (canto superior direito), dica de teclas e botão **Sair**. No celular, o joystick aparece sobre o vídeo.
+- **Elementos:** vídeo RGB em tela cheia, chips de modo/Kinect/serial/LIDAR (topo), distâncias Dist/Esq/Cen/Dir/Trás, comando e FPS (canto inferior esquerdo), miniatura da profundidade (canto superior direito), vídeo da câmera traseira com a caixa do rosto reconhecido logo abaixo (a borda fica verde e mostra o nome quando a pessoa aparece), radar 360° do RPLIDAR (embaixo, no centro), dica de teclas e botão **Sair**. No celular, o joystick aparece sobre o vídeo e o radar sobe para a direita.
 - **Ação do usuário:** dirigir com WASD/setas ou joystick; **ESC** fecha.
 
 ### Aprendizado
@@ -1369,9 +1434,10 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `test_captura.py` | Fluxo completo do Kinect (callback → quadro BGR → distâncias no estado), disponibilidade do Kinect, tilt, ZED com rosto marcado e leitor do FFmpeg | 18 |
 | `test_depth_metrics.py` | Distância pelo ponto mais próximo, fundo distante, leituras inválidas, formato em mm e desvio no autônomo | 6 |
 | `test_kinect_release.py` | Liberação dos módulos do kernel, reconexão, tilt e estabilização | 9 |
-| `test_telemetria_mjpeg_runtime.py` / `test_servidor.py` | `/api/status`, quadros MJPEG, start/stop das sete threads e servidor HTTP real numa porta livre | 8 |
+| `test_telemetria_mjpeg_runtime.py` / `test_servidor.py` | `/api/status`, quadros MJPEG, start/stop das oito threads e servidor HTTP real numa porta livre | 8 |
+| `test_lidar.py` | Protocolo do RPLIDAR (comandos, amostras, realinhamento depois de lixo, ângulo impossível), abertura com serial falsa (motor, saúde com erro, sem resposta), referencial do AGV, máscara, folgas pela borda do chassi, thread publicando voltas, **autônomo com LIDAR** (zona cega do Kinect, lado encostado, ré quando encurralado, parede lateral), ré da IA bloqueada, **mapa com o laser numa sala simulada**, Arduino ignorando a porta do laser, webcam genérica, `agv.env` e `/api/lidar` | 32 |
 
-**Resumo:** 225 testes, todos aprovados (Windows 10 / Python 3.11.9 e Ubuntu 24.04 no CI). Cobertura do pacote `pc_agv`: **90%**.
+**Resumo:** 257 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV). Cobertura do pacote `pc_agv`: **89%**.
 
 | Módulo | Cobertura | Módulo | Cobertura |
 |---|---|---|---|
@@ -1380,15 +1446,16 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `web/mjpeg.py` | 96% | `visao/profundidade.py` | 88% |
 | `web/rotas.py` | 93% | `hardware/arduino.py` | 87% |
 | `visao/rostos.py` | 89% | `hardware/kinect.py` | 77% |
-| `sqlite_util.py` | 87% | `hardware/zed.py` | 55% |
-| | | **Total** | **90%** |
+| `sqlite_util.py` | 87% | `hardware/zed.py` | 62% |
+| `visao/lidar.py` | 97% | `hardware/rplidar.py` | 76% |
+| | | **Total** | **89%** |
 
 O CI também **monta a imagem Docker** e **gera o executável do PyInstaller** num Ubuntu 24.04 limpo, seguindo o passo B da seção 15, e confere que os dois sobem e respondem `/api/status`. Os três trabalhos rodam em paralelo a cada push e pull request:
 
 ```mermaid
 flowchart LR
     subgraph T["Testes e lint"]
-        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["225 testes com<br/>cobertura mínima de 80%"]
+        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["257 testes com<br/>cobertura mínima de 80%"]
     end
     subgraph D["Imagem Docker"]
         D1["docker build"] --> D2["Driver do Kinect<br/>importa na imagem"] --> D3["Servidor responde<br/>sem hardware"]
@@ -1433,7 +1500,12 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 
 | Teste | Procedimento | Resultado esperado | Resultado obtido | Status |
 |---|---|---|---|---|
-| Vídeo RGB e profundidade | Iniciar com o Kinect conectado | Vídeos ao vivo no painel | ⚠️ PREENCHER | ⚠️ |
+| Vídeo RGB e profundidade | Iniciar com o Kinect conectado | Vídeos ao vivo no painel | RGB e profundidade a 30 fps na captura; streams a 15 e 10 fps pelo `agv.env` (17/10/2026) | ✅ |
+| Arduino pela serial | Iniciar com o Arduino conectado | `ARDUINO:READY`, resposta ao `PING` e `0,0` enviado pelo watchdog | Conectado em `/dev/agv-arduino`; `PONG` e `STATUS:0,0` recebidos (17/10/2026) | ✅ |
+| RPLIDAR | Iniciar com o laser conectado | Indicador LIDAR verde e radar 360° com as paredes em volta | Firmware 1.24, saúde ok, ~13 voltas/s, ~120 pontos por volta, voltas cobrindo os 360° (17/10/2026) | ✅ |
+| Mapa com LIDAR, parado | Ligar o mapeamento com o AGV parado por 4 s | Sem falhas e sem deriva | 15 leituras, 0 falhas, erro de casamento 1,4 cm, 96% dos pontos casados, deriva ~2 mm (17/10/2026) | ✅ |
+| Webcam no lugar da ZED | Iniciar sem a ZED | Webcam do notebook no quadro de detecção facial | `/dev/video1` aberta a 640×360 (17/10/2026) | ✅ |
+| Montagem do LIDAR | Obstáculo à frente, à esquerda e atrás do AGV | Cada um aparece no setor certo do radar | ⚠️ PREENCHER (calibrar `AGV_LIDAR_FRENTE_GRAUS`) | ⚠️ |
 | Distância medida × trena | Obstáculo a 0,5 m, 1 m e 2 m à frente | Valor do HUD próximo da trena | ⚠️ PREENCHER | ⚠️ |
 | Condução manual | W/A/S/D no PC e joystick no celular | AGV obedece aos comandos | ⚠️ PREENCHER | ⚠️ |
 | Parada total | Clicar em **PARADA DE EMERGÊNCIA** em movimento | AGV para imediatamente | ⚠️ PREENCHER | ⚠️ |
@@ -1450,7 +1522,7 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 | Dispositivo | Sistema | Versão | Resultado |
 |---|---|---|---|
 | Notebook de desenvolvimento (navegador Microsoft Edge 155) | Windows 10 Pro | 22H2 (build 19045) | Painel e HUD funcionam sem hardware; launcher não roda (usa `fcntl`, exclusivo de Linux) |
-| Notebook embarcado do AGV | ⚠️ PREENCHER | ⚠️ PREENCHER | ⚠️ PREENCHER |
+| Notebook embarcado do AGV | Ubuntu 22.04.5 LTS, kernel 6.8, Python 3.10.12 | libfreenect 0.5.3 + driver Python 0.7.5 | Kinect, RPLIDAR, webcam, Arduino e painel funcionando juntos; 257 testes aprovados (17/10/2026) |
 | Celular do operador | ⚠️ PREENCHER | ⚠️ PREENCHER | ⚠️ PREENCHER |
 
 > Só entram aqui dispositivos realmente testados.
@@ -1463,9 +1535,9 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 - **Profundidade e RGB não estão alinhados entre si.** O Kinect v1 tem as duas câmeras deslocadas, e o código ainda não registra uma sobre a outra; isso é pré-requisito para desenhar sobre o obstáculo no vídeo.
 - **Faixa de medição limitada:** só a faixa central (35–65% da altura) é medida. Obstáculos baixos (paletes no chão) ou altos podem não aparecer nas distâncias.
 - **Precisão do Kinect v1 cai com a distância** (Wasenmüller e Stricker, 2017), e o alcance útil vai de cerca de 0,8 m a 4 m: objetos muito próximos ficam sem leitura, e luz solar forte atrapalha a medição. Os limiares de 0,35 m e 0,60 m do modo autônomo e da IA ficam abaixo desse alcance e precisam ser conferidos no AGV real (seção 22.4); nas sobreposições, a falta de leitura vai virar um aviso de zona não medida (RF39).
-- **Vídeo com baixa taxa de quadros** (6 fps RGB, 4 fps profundidade por padrão) para caber em redes fracas, o que aumenta a latência percebida.
+- **Vídeo com baixa taxa de quadros por padrão** (6 fps RGB, 4 fps profundidade) para caber em redes fracas, o que aumenta a latência percebida. O `agv.env.exemplo` sobe para 15 e 10 fps; o Kinect captura a 30.
 - **O modo autônomo é reativo e simples:** regras por limiar, sem planejamento de trajetória; o mapa existe, mas ainda não é usado para navegar.
-- **A IA só enxerga a profundidade à frente:** a entrada são 48 números tirados de uma miniatura 24×32; não usa a câmera RGB nem a ZED, e não sabe o que há atrás do AGV (por isso a ré da IA é limitada a 30%). Aprende só o que o operador demonstrou.
+- **A IA só enxerga a profundidade à frente:** a entrada são 48 números tirados de uma miniatura 24×32; não usa a câmera RGB nem a ZED, e só sabe o que há atrás do AGV pelo RPLIDAR, que bloqueia a ré com obstáculo a menos de 0,35 m (sem o laser, a ré da IA fica limitada a 30% e sem verificação). Aprende só o que o operador demonstrou.
 - **Poucos dados, pouca generalização:** com alguns minutos de exemplos a rede reproduz os desvios mais comuns; situações que o operador nunca mostrou podem gerar comandos ruins. A camada de segurança e a parada de emergência continuam valendo.
 - **A odometria visual acumula erro:** não há fechamento de laço (*loop closure*) nem relocalização, então em percursos longos o mapa pode ficar torto; corredores lisos e compridos e espaços sem nada a menos de 4,5 m são os casos mais difíceis.
 - **O mapa precisa de calibração:** sem a distância do eixo até o Kinect, a posição escorrega nas curvas (seção 22.3). Os parâmetros intrínsecos usados são os de referência do Kinect v1, não os do sensor do AGV.
@@ -1473,12 +1545,16 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 - **IA e mapa só foram validados em simulação e com dados sintéticos:** os testes com o AGV (seção 22.4) ainda estão pendentes.
 - **Hardware só em Linux:** libfreenect, `/dev/tty*` e o launcher (`fcntl`). No Windows/Mac só é possível ver o painel.
 - **Sem autenticação:** qualquer dispositivo da mesma rede pode abrir o painel e comandar o AGV.
-- **`sudo` sem senha:** o servidor tenta descarregar `gspca_kinect` com `sudo -n`. Se o sudo pedir senha, isso falha em silêncio; rode `sudo modprobe -r gspca_kinect gspca_main` antes.
+- **`sudo` sem senha:** o servidor tenta descarregar `gspca_kinect` com `sudo -n`. Se o sudo pedir senha, isso falha em silêncio; rode uma vez `sudo bash scripts/instalar_regras_udev.sh`, que coloca o módulo na blacklist.
+- **O RPLIDAR enxerga um único plano**, na altura em que está montado: tampo de mesa, degrau e objetos mais baixos que ele não aparecem (o Kinect cobre parte disso à frente, mas não dos lados nem atrás). Vidro, espelho e superfícies muito escuras podem não refletir o laser.
+- **Montagem do LIDAR ainda não calibrada:** ângulo da frente, posição no chassi e medidas do AGV estão com valores padrão no `agv.env`; até medir, o radar pode mostrar os setores girados e as folgas aproximadas (seção 22.4).
+- **Voltas do laser com o AGV em movimento** ficam levemente distorcidas (cada volta leva ~75 ms); por isso o mapa deve ser feito devagar.
+- **Tilt do Kinect for Windows:** neste modelo a libfreenect não responde ao comando de tilt nem ao acelerômetro (`tilt sem resposta do acelerometro`); vídeo e profundidade funcionam normalmente.
 - **A imagem Docker não inclui FFmpeg:** dentro do container a ZED só abre pelo OpenCV.
 - **1ª build lenta:** o `face-recognition` compila o dlib do código-fonte.
 - **RTT não é registrado:** a latência só aparece como aviso na tela; a pesquisa precisa dela em log (RF37).
 - **Distância pelo pixel mais próximo:** cada janela usa o ponto mais próximo; um pixel isolado com ruído pode gerar um alerta falso. Ainda não há filtro (ex.: percentil ou mediana).
-- **O CI não tem hardware:** Kinect, ZED e Arduino são simulados; o funcionamento real só é validado no AGV (seção 22.4). A captura da ZED por FFmpeg é a parte menos coberta (`zed.py`, 55%).
+- **O CI não tem hardware:** Kinect, RPLIDAR, ZED e Arduino são simulados; o funcionamento real só é validado no AGV (seção 22.4). A captura da ZED por FFmpeg é a parte menos coberta (`zed.py`, 55%).
 - **Os testes funcionais do painel não rodam no CI:** o JavaScript é verificado por scripts no navegador *headless* (61 + 26 verificações, seção 22.2), executados durante o desenvolvimento; o CI só confere a sintaxe dos módulos.
 
 ---
@@ -1750,6 +1826,30 @@ gitGraph
 **Causa:** sem casamento, a pose congelava.
 **Solução:** com o AGV recebendo comando de movimento, a pose segue pelo último movimento medido (velocidade constante) até a vista voltar; parado, fica onde está. Saltos impossíveis entre dois quadros (mais de 30 cm ou 30°) são recusados.
 
+### Problema 21 — Arduino recebia lixo ao ser conectado
+
+**Problema:** logo depois de ligar o cabo, o Arduino respondia vários `ARDUINO:ERROR:OVERFLOW` sem nenhum comando enviado, e o primeiro `PING` se perdia.
+**Causa:** o ModemManager do Ubuntu sonda toda porta serial nova mandando comandos AT, que o firmware lê como uma linha longa demais.
+**Solução:** regra udev (`scripts/99-agv-serial.rules`) com `ID_MM_DEVICE_IGNORE` nas portas do Arduino e do RPLIDAR, que também ganharam nomes fixos (`/dev/agv-arduino`, `/dev/rplidar`).
+
+### Problema 22 — O Arduino podia abrir a porta do RPLIDAR
+
+**Problema:** a busca do Arduino aceita a primeira porta serial que abrir, mesmo sem resposta do firmware; com o laser em `ttyUSB1`, um Arduino desconectado faria o servidor mandar comandos de motor ao LIDAR.
+**Causa:** as duas placas usam conversores USB-serial, e a busca listava todas as portas.
+**Solução:** a porta do RPLIDAR (`porta_reservada`) é retirada da lista de candidatas do Arduino.
+
+### Problema 23 — A webcam não era detectada
+
+**Problema:** sem a ZED, o quadro de detecção facial ficava em "Aguardando webcam ZED", mesmo com a webcam do notebook funcionando.
+**Causa:** a busca só aceitava `/dev/video0` ou câmeras com "zed"/"stereo" no nome; e `/dev/video0` era o Kinect, criado pelo driver `gspca_kinect` do kernel (que some quando o Kinect é liberado para a libfreenect).
+**Solução:** depois das câmeras ZED, a busca aceita qualquer outra webcam (só o nó de captura, nunca o Kinect), e o `gspca_kinect` foi para a blacklist.
+
+### Problema 24 — O script do driver do Kinect falhava com a `.venv`
+
+**Problema:** `PYTHON=.venv/bin/python bash scripts/instalar_freenect_python.sh`, como o próprio README indicava, terminava com "Arquivo ou diretório inexistente"; numa máquina sem `curl`, falhava com um erro de `gzip`.
+**Causa:** o script muda de pasta antes de compilar, e o caminho relativo do Python deixava de valer; o `curl` não era verificado.
+**Solução:** o script converte o caminho do Python para absoluto e avisa quando falta o `curl`.
+
 ---
 
 ## 30. Melhorias Futuras
@@ -1764,6 +1864,7 @@ gitGraph
 - **Mapa:** fechamento de laço e relocalização num mapa salvo; usar o mapa para o modo autônomo planejar trajetórias e ir até um ponto clicado no mapa; encoders nas rodas para fundir com a odometria visual; calibrar os parâmetros intrínsecos do Kinect do AGV.
 - **IA:** usar também a imagem RGB (rede convolucional) e o histórico de comandos; aumentar os dados com espelhamento das cenas (esquerda ↔ direita).
 - Levar os testes funcionais do navegador para o CI.
+- **LIDAR:** levar os obstáculos laterais e traseiros do laser para as sobreposições de RA (setas na borda do vídeo apontando o que o Kinect não vê); fechamento de laço no mapa usando as voltas de 360°; calibração automática do ângulo de montagem; usar o laser como entrada da IA.
 
 ---
 

@@ -4,6 +4,29 @@ Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v
 
 ## [Não lançado]
 
+### Adicionado
+
+- **RPLIDAR 360°** somado ao Kinect (`pc_agv/hardware/rplidar.py`, `pc_agv/visao/lidar.py`): driver serial próprio do protocolo Slamtec (A1/A2/A3, sem SDK), thread `agv-lidar` que reconecta sozinha, volta convertida para o referencial do AGV e folga até a borda do chassi em 8 setores.
+- **Autônomo com LIDAR:** a frente usa a menor leitura entre Kinect e laser (cobre a zona cega do Kinect abaixo de ~0,5 m); não gira para o lado em que o chassi está encostado; dá ré lenta quando a frente e as diagonais fecham e a traseira está livre; afasta-se de parede lateral. Sem Kinect continua parando.
+- **IA com LIDAR:** a camada de segurança usa a frente combinada e bloqueia a ré com obstáculo a menos de 0,35 m atrás.
+- **Mapa com LIDAR:** a odometria casa as voltas de 360° do laser; o mapa recebe o laser e o Kinect, cada um da sua posição no AGV; sem o laser, volta ao Kinect.
+- **Radar 360°** na página *Telemetria* e no HUD, indicador LIDAR na barra superior e no HUD; rota `/api/lidar` e seção `lidar` em `/api/status`.
+- **HUD** com o vídeo da câmera traseira (detecção facial, borda verde e nome quando reconhece) e a folga traseira.
+- **Webcam no lugar da ZED:** sem ZED, a câmera traseira usa qualquer outra webcam (nunca o Kinect).
+- **`agv.env`**: configuração local lida pelo launcher (modelo em `agv.env.exemplo`).
+- `scripts/instalar_regras_udev.sh`: portas fixas `/dev/agv-arduino` e `/dev/rplidar`, ModemManager longe delas e blacklist do `gspca_kinect`.
+
+### Corrigido
+
+- O Arduino não tenta mais abrir a porta do RPLIDAR.
+- `scripts/instalar_freenect_python.sh` com `PYTHON=.venv/bin/python` (caminho relativo) e sem `curl`.
+- Arquivo do nome da câmera aberto sem ser fechado na busca da ZED.
+
+### Qualidade
+
+- Testes de 225 para 257 (`tests/test_lidar.py`); cobertura do `pc_agv` em 89%.
+- Validado no notebook do AGV (Ubuntu 22.04.5, Python 3.10.12) com Kinect, RPLIDAR, webcam e Arduino ligados juntos.
+
 ### Documentação
 
 - Cronograma técnico com as datas previstas de cada etapa e os responsáveis, iguais aos do quadro de tarefas (revisão de 16/10/2026).
