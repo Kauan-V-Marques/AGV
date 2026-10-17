@@ -162,8 +162,8 @@ def _resposta(ser, tamanho: int) -> Optional[bytes]:
 
 
 def _parar(ser) -> None:
+    # Sem flush() (tcdrain, sem timeout): o write_timeout ja limita a escrita.
     ser.write(comando(CMD_STOP))
-    ser.flush()
     time.sleep(0.05)
     ser.reset_input_buffer()
 
@@ -174,7 +174,6 @@ def _motor(ser, ligar: bool) -> None:
     except Exception:
         pass
     ser.write(comando_pwm(LIDAR_MOTOR_PWM if ligar else 0))
-    ser.flush()
 
 
 def _abrir(porta: str):
@@ -216,6 +215,11 @@ def _fechar(ser) -> None:
     try:
         ser.write(comando(CMD_STOP))
         _motor(ser, False)
+        time.sleep(0.05)  # ~8 bytes a 115200 baud saem em menos de 1 ms
+    except Exception:
+        pass
+    try:
+        ser.reset_output_buffer()  # sem isso o close() pode esperar ate 30 s (closing_wait)
     except Exception:
         pass
     try:

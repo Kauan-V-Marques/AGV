@@ -1,4 +1,6 @@
 import io
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -92,14 +94,32 @@ class TestControle(_Base):
 
     def test_parada_total(self):
         estado.control_state.update({"mode": "auto", "manual_speed": 80, "active_speed": 80})
-        with patch("pc_agv.hardware.arduino.send_to_arduino", return_value=True) as envio:
+        modo_no_envio, threads = [], []
+        original = rotas._enviar_parada
+        with patch("pc_agv.hardware.arduino.send_to_arduino",
+                   side_effect=lambda *a, **k: modo_no_envio.append(estado.control_state["mode"])) as envio, \
+                patch.object(rotas, "_enviar_parada", side_effect=lambda: threads.append(original()) or threads[-1]):
             resposta = self.client.post("/api/stop")
+            threads[0].join(timeout=2.0)
         self.assertEqual(resposta.status_code, 200)
-        envio.assert_called_once_with(0, 0, "manual", "stop")
+        envio.assert_called_once_with(0, 0, "manual", "stop", conectar=False)
+        self.assertEqual(modo_no_envio, ["manual"])  # o modo muda antes do envio
         final = estado.control_state
         self.assertEqual((final["mode"], final["manual_speed"], final["active_speed"], final["last_source"]),
                          ("manual", 0, 0, "stop"))
 
+
+    def test_parada_responde_mesmo_com_a_serial_presa(self):
+        estado.control_state.update({"mode": "auto", "active_speed": 80})
+        travada = threading.Event()
+        with patch("pc_agv.hardware.arduino.send_to_arduino", side_effect=lambda *a, **k: travada.wait(5.0)):
+            inicio = time.monotonic()
+            resposta = self.client.post("/api/stop")
+            demorou = time.monotonic() - inicio
+            travada.set()
+        self.assertEqual(resposta.status_code, 200)
+        self.assertLess(demorou, 1.0)
+        self.assertEqual(estado.control_state["mode"], "manual")
 
     def test_modo_ia_sem_modelo_e_recusado(self):
         estado.control_state["mode"] = "manual"

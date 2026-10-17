@@ -244,6 +244,63 @@ class TestAbrirLidar(unittest.TestCase):
             self._abrir(falsa)
 
 
+class TestSerialPresa(unittest.TestCase):
+    """Medido no AGV: um flush() (tcdrain) preso segurava o lock da serial e travava o painel."""
+
+    def test_status_e_encerramento_nao_esperam_o_lock_preso(self):
+        import time as relogio
+
+        from apoio import arduino_isolado
+
+        with arduino_isolado():
+            arduino._arduino_lock.acquire()  # outra thread "presa" na serial
+            try:
+                inicio = relogio.monotonic()
+                self.assertIn("connected", arduino.status_snapshot())
+                arduino.last_error()
+                arduino.close()
+                self.assertLess(relogio.monotonic() - inicio, 2.0)
+            finally:
+                arduino._arduino_lock.release()
+
+    def test_fechar_descarta_o_buffer_antes(self):
+        from apoio import SerialFalsa, arduino_isolado
+
+        ordem = []
+        falsa = SerialFalsa()
+        falsa.reset_output_buffer = lambda: ordem.append("descarta")
+        fechar = falsa.close
+        falsa.close = lambda: (ordem.append("fecha"), fechar())
+        with arduino_isolado(), patch.object(arduino, "_arduino_serial", falsa):
+            arduino.close()
+        self.assertEqual(ordem, ["descarta", "fecha"])
+
+    def test_timeout_de_escrita_mantem_a_porta_aberta(self):
+        import serial
+
+        from apoio import SerialFalsa, arduino_isolado
+
+        falsa = SerialFalsa()
+        descartes = []
+        falsa.reset_output_buffer = lambda: descartes.append(1)
+        falsa.write = lambda dados: (_ for _ in ()).throw(serial.SerialTimeoutException("Write timeout"))
+        with arduino_isolado(), patch.object(arduino, "_arduino_serial", falsa):
+            arduino._arduino_state["enabled"] = True
+            self.assertFalse(arduino.send_to_arduino(30, 0, "manual", "teste"))
+            self.assertIs(arduino._arduino_serial, falsa)        # nao fechou
+            self.assertFalse(falsa.fechada)
+            self.assertEqual(descartes, [1])                   # comando velho descartado
+            self.assertIn("sem aceitar dados", arduino.last_error())
+
+    def test_parada_nao_reconecta(self):
+        from apoio import arduino_isolado
+
+        with arduino_isolado(), patch.object(arduino, "_connect_arduino") as conectar:
+            arduino._arduino_state["enabled"] = True
+            self.assertFalse(arduino.send_to_arduino(0, 0, "manual", "stop", conectar=False))
+            conectar.assert_not_called()
+
+
 class TestPortaDoArduino(unittest.TestCase):
     def test_arduino_nao_abre_a_porta_do_lidar(self):
         with patch.object(rplidar, "porta_reservada", return_value=os.path.realpath("/dev/ttyUSB1")), \

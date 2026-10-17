@@ -4,6 +4,7 @@ import math
 import mimetypes
 import os
 import socket
+import threading
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
@@ -229,9 +230,19 @@ def route_settings():
         return jsonify({"ok": True, "settings": dict(estado.settings)})
 
 
+def _enviar_parada() -> threading.Thread:
+    """0,0 imediato numa thread propria: a resposta da parada nunca espera a serial (se
+    ela estiver presa, o agv-control segue mandando 0,0 e o firmware para em 500 ms)."""
+    envio = threading.Thread(target=arduino.send_to_arduino, args=(0, 0, "manual", "stop"),
+                             kwargs={"conectar": False}, daemon=True, name="agv-parada")
+    envio.start()
+    return envio
+
+
 @app.route("/api/stop", methods=["POST"])
 def route_stop():
-    arduino.send_to_arduino(0, 0, "manual", "stop")
+    # Primeiro o estado: mesmo que a serial esteja presa ou desconectada, o modo volta a
+    # manual e o agv-control passa a mandar 0,0. So depois o 0,0 imediato, sem reconectar.
     with estado.control_lock:
         modo_anterior = estado.control_state["mode"]
         estado.control_state["mode"] = "manual"
@@ -243,6 +254,7 @@ def route_stop():
         estado.control_state["last_source"] = "stop"
         estado.control_state["arduino_sent"] = True
         estado.control_state["arduino_error"] = None
+    _enviar_parada()
     if modo_anterior == "ia":
         # A IA levou o operador a apertar a parada: isso entra como penalidade no treino.
         aprendizado.registrar_parada()

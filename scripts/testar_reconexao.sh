@@ -5,6 +5,7 @@
 # Uso (servidor rodando, AGV parado):  sudo -v && bash scripts/testar_reconexao.sh
 # O Arduino so recebe 0,0 (modo manual + watchdog) durante o teste.
 set -uo pipefail
+export LC_NUMERIC=C  # printf com ponto decimal (o sistema em pt_BR usa virgula)
 
 API="${AGV_API:-http://127.0.0.1:5000}/api/status"
 

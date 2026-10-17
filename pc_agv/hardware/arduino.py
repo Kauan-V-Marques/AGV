@@ -17,6 +17,10 @@ from pc_agv.hardware import rplidar
 
 
 _arduino_lock = threading.Lock()
+# Leituras do estado (painel, /api/status) esperam no maximo isto pelo lock. Se uma
+# operacao serial travar segurando o lock, o painel e a parada de emergencia nao podem
+# travar junto: leem o estado sem o lock (copia de dict e atomica no CPython).
+LEITURA_LOCK_S = 0.2
 
 _arduino_serial = None
 
@@ -101,6 +105,13 @@ def _close_arduino_locked() -> None:
     if _arduino_serial is None:
         return
     try:
+        # Descarta o que nao saiu: no close() o kernel espera ate 30 s (closing_wait) o
+        # buffer esvaziar, e um conversor recem-religado que nao aceita dados ("Write
+        # timeout") fazia a reconexao levar ~34 s. Comando velho de motor nao deve sair.
+        _arduino_serial.reset_output_buffer()
+    except Exception:
+        pass
+    try:
         _arduino_serial.close()
     except Exception:
         pass
@@ -168,8 +179,9 @@ def _probe_arduino_locked(ser) -> bool:
         return True
 
     try:
+        # Sem flush(): no Linux ele vira tcdrain, sem timeout. Um conversor USB-serial que
+        # para de esvaziar o buffer travava a thread aqui, segurando o lock da serial.
         ser.write(b"PING\n")
-        ser.flush()
         time.sleep(0.25)
     except Exception:
         return False
@@ -270,7 +282,9 @@ def speed_steering_to_payload(speed: int, steering: int) -> tuple[int, int]:
     return accel, dir_val
 
 
-def send_to_arduino(speed: int, steering: int, mode: str, source: str) -> bool:
+def send_to_arduino(speed: int, steering: int, mode: str, source: str, conectar: bool = True) -> bool:
+    """conectar=False: se a serial nao esta aberta, desiste na hora (a parada de emergencia
+    nao pode esperar os ~2 s de uma reconexao)."""
     if not _arduino_state["enabled"]:
         with _arduino_lock:
             _arduino_state["last_error"] = "serial desativada por ambiente"
@@ -279,7 +293,7 @@ def send_to_arduino(speed: int, steering: int, mode: str, source: str) -> bool:
     with _arduino_lock:
         ser = _arduino_serial
 
-    if ser is None and not _connect_arduino():
+    if ser is None and (not conectar or not _connect_arduino()):
         return False
 
     with _arduino_lock:
@@ -302,11 +316,8 @@ def send_to_arduino(speed: int, steering: int, mode: str, source: str) -> bool:
     try:
         with _arduino_lock:
             _drain_arduino_input_locked(ser)
+        # write_timeout limita a escrita; flush() (tcdrain) nao tem timeout e nao e usado.
         ser.write((payload + "\n").encode("ascii", errors="ignore"))
-        try:
-            ser.flush()
-        except Exception:
-            pass
         with _arduino_lock:
             _arduino_state["connected"] = True
             _arduino_state["last_command"] = payload
@@ -327,6 +338,18 @@ def send_to_arduino(speed: int, steering: int, mode: str, source: str) -> bool:
             _arduino_log_state["at"] = util.now()
         return True
     except Exception as exc:
+        if _e_timeout_de_escrita(exc):
+            # O conversor ainda nao aceita dados (comum logo depois de religar o cabo).
+            # Fechar aqui travava: no close() o driver espera ate 30 s o que esta em
+            # transito. Mantem a porta, descarta o comando velho e tenta no proximo ciclo.
+            with _arduino_lock:
+                _arduino_state["connected"] = False
+                _arduino_state["last_error"] = f"serial sem aceitar dados: {exc}"
+                try:
+                    ser.reset_output_buffer()
+                except Exception:
+                    pass
+            return False
         with _arduino_lock:
             _arduino_state["connected"] = False
             _arduino_state["last_error"] = str(exc)
@@ -334,18 +357,42 @@ def send_to_arduino(speed: int, steering: int, mode: str, source: str) -> bool:
         return False
 
 
+def _e_timeout_de_escrita(exc: Exception) -> bool:
+    try:
+        from serial import SerialTimeoutException  # type: ignore[import-not-found]
+    except Exception:
+        return False
+    return isinstance(exc, SerialTimeoutException)
+
+
 
 def status_snapshot() -> dict:
-    with _arduino_lock:
-        return dict(_arduino_state)
+    if _arduino_lock.acquire(timeout=LEITURA_LOCK_S):
+        try:
+            return dict(_arduino_state)
+        finally:
+            _arduino_lock.release()
+    return dict(_arduino_state)
 
 
 def last_error() -> Optional[str]:
-    with _arduino_lock:
-        return _arduino_state.get("last_error")
+    if _arduino_lock.acquire(timeout=LEITURA_LOCK_S):
+        try:
+            return _arduino_state.get("last_error")
+        finally:
+            _arduino_lock.release()
+    return _arduino_state.get("last_error")
 
 
 def close() -> None:
-    with _arduino_lock:
-        _close_arduino_locked()
-        _arduino_state["connected"] = False
+    if _arduino_lock.acquire(timeout=1.0):
+        try:
+            _close_arduino_locked()
+            _arduino_state["connected"] = False
+        finally:
+            _arduino_lock.release()
+        return
+    # Outra thread travou na serial segurando o lock: fecha assim mesmo para encerrar.
+    log.warning("Serial do Arduino ocupada ao encerrar; fechando sem o lock")
+    _close_arduino_locked()
+    _arduino_state["connected"] = False
