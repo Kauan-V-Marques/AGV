@@ -156,9 +156,9 @@ def decidir(agora: Optional[float] = None) -> tuple[int, int, str]:
         frente_lidar = folgas.get("frente")
         frente_lidar = LIDAR_MAX_M if frente_lidar is None else frente_lidar
         frente = frente_lidar if frente is None else min(frente, frente_lidar)
-        atras = [folgas.get(setor) for setor in ("tras", "tras_esq", "tras_dir")]
-        atras = [valor for valor in atras if valor is not None]
-        tras = min(atras) if atras else LIDAR_MAX_M
+        # so o corredor atras: num corredor as paredes laterais aparecem nas diagonais
+        tras = folgas.get("tras")
+        tras = LIDAR_MAX_M if tras is None else tras
     return politica.aplicar_seguranca(int(round(velocidade)), int(round(direcao)), frente, velocidade_max, motivo,
                                       tras_m=tras)
 

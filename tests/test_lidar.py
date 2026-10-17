@@ -281,12 +281,64 @@ class TestAutonomoComLidar(unittest.TestCase):
         speed, _, reason = self._comando(folgas)
         self.assertEqual((speed, reason), (0, "obstaculo-muito-perto"))
 
-    def test_afasta_da_parede_lateral(self):
-        self.assertEqual(self._comando({"esquerda": 0.05}), (40, 25, "afastando-da-esquerda"))
-        self.assertEqual(self._comando({"direita": 0.05}), (40, -25, "afastando-da-direita"))
+    def test_rente_a_parede_segue_reto_e_devagar(self):
+        # virar para longe da parede faria a traseira varre-la (curva fechada no firmware)
+        self.assertEqual(self._comando({"esquerda": 0.05}), (30, 0, "rente-a-esquerda"))
+        self.assertEqual(self._comando({"direita": 0.05}), (30, 0, "rente-a-direita"))
 
     def test_sem_kinect_para_mesmo_com_lidar(self):
         self.assertEqual(self._comando({}, kinect_ok=False), (0, 0, "sem-kinect"))
+
+
+class TestEspacoDeGiro(unittest.TestCase):
+    """Os cantos do chassi descrevem um circulo ao girar no lugar (raio ~0,39 m)."""
+
+    def _comando(self, pontos, folgas, **kinect):
+        base = {"kinect_ok": True, "distance_m": 2.0, "left_clearance_m": 2.0,
+                "center_clearance_m": 2.0, "right_clearance_m": 2.0}
+        base.update(kinect)
+        estado.state.update(base)
+        estado.lidar_state.update(ok=True, at=util.now(), pontos=np.array(pontos, dtype=float),
+                                  folgas={**{s: None for s in geometria.SETORES}, **folgas})
+        return controle.compute_autopilot_command()
+
+    def test_espaco_de_giro_ignora_o_proprio_chassi(self):
+        with patch.object(rplidar, "CORPO", CORPO):
+            raio = math.hypot(0.30, 0.25)
+            self.assertIsNone(controle._espaco_de_giro(np.array([[0.1, 0.1]])))
+            self.assertAlmostEqual(controle._espaco_de_giro(np.array([[0.1, 0.1], [0.0, 0.60]])), 0.60 - raio)
+
+    def test_sem_espaco_para_girar_recua_e_continua_recuando(self):
+        parede_lateral = [[x, 0.33] for x in np.arange(-1.0, 1.0, 0.05)]
+        with estado_isolado(), patch.object(rplidar, "CORPO", CORPO):
+            # frente fechada e parede a 8 cm da lateral: girar rasparia o canto
+            self.assertEqual(self._comando(parede_lateral + [[0.5, 0.0]], {"frente": 0.20, "esquerda": 0.08, "tras": 2.0}),
+                             (-controle.RE_VELOCIDADE, 0, "re-sem-espaco-para-girar"))
+            # a frente "abriu" com a re, mas ainda nao ha espaco: continua recuando
+            self.assertEqual(self._comando(parede_lateral, {"esquerda": 0.08, "tras": 2.0}),
+                             (-controle.RE_VELOCIDADE, 0, "recuando"))
+            # saiu do aperto: volta a dirigir
+            self.assertEqual(self._comando([[0.0, 1.5]], {"tras": 2.0})[2], "livre")
+
+    def test_sem_espaco_e_sem_re_para(self):
+        apertado = [[0.0, 0.33], [0.0, -0.33], [0.5, 0.0], [-0.5, 0.0]]
+        with estado_isolado(), patch.object(rplidar, "CORPO", CORPO):
+            self.assertEqual(self._comando(apertado, {"frente": 0.20, "tras": 0.20}), (0, 0, "sem-saida"))
+
+    def test_corredor_estreito_segue_reto(self):
+        corredor = [[x, y] for x in np.arange(-1.0, 1.5, 0.05) for y in (0.36, -0.36)]
+        with estado_isolado(), patch.object(rplidar, "CORPO", CORPO):
+            self.assertEqual(self._comando(corredor, {"frente": 0.80, "frente_esq": 0.40, "frente_dir": 1.0}),
+                             (18, 0, "estreito-em-frente"))
+
+    def test_re_ignora_as_paredes_laterais_do_corredor(self):
+        # Num beco, as diagonais traseiras veem as paredes do corredor; a re so precisa do corredor atras.
+        folgas = {"frente": 0.20, "frente_esq": 0.20, "frente_dir": 0.20, "tras": 1.5, "tras_esq": 0.10, "tras_dir": 0.10}
+        with estado_isolado():
+            publicar_folgas(**folgas)
+            estado.state.update(kinect_ok=True, distance_m=2.0, left_clearance_m=2.0, center_clearance_m=2.0,
+                                right_clearance_m=2.0)
+            self.assertEqual(controle.compute_autopilot_command()[0], -controle.RE_VELOCIDADE)
 
 
 class TestSegurancaDaIaComLidar(unittest.TestCase):
