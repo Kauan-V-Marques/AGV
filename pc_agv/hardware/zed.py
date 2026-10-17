@@ -16,6 +16,7 @@ from pc_agv.config import (
     ZED_HEIGHT,
     ZED_NAME_HINT,
     ZED_STRICT_DEVICE,
+    ZED_WEBCAM_GENERICA,
     ZED_WIDTH,
     log,
 )
@@ -31,15 +32,37 @@ def _zed_source_value(source_raw: str):
     return value or 0
 
 
+_CAMERAS_DO_KINECT = ("kinect", "gspca", "xbox")
+_avisadas: set[str] = set()
+
+
+def _indice_do_node(name_path: str) -> int:
+    # Cada webcam UVC cria dois nodes: index 0 captura video, o outro so metadados.
+    try:
+        with open(os.path.join(os.path.dirname(name_path), "index"), "r", encoding="utf-8") as arquivo:
+            return int(arquivo.read().strip() or 0)
+    except Exception:
+        return 0
+
+
 def _zed_nodes_from_sysfs() -> list[str]:
-    """Detecta nodes ZED pelo sysfs. Tenta varios nomes: zed, stereolabs, usb video, ou qualquer device USB."""
+    """Nodes de video pelo sysfs: primeiro os da ZED (zed, stereolabs, stereo, "usb video"),
+    depois, com AGV_ZED_WEBCAM_GENERICA=1, qualquer outra webcam (ex.: a do notebook).
+    As cameras do Kinect nunca entram: ele e lido pela libfreenect."""
     nodes = []
+    genericas = []
     for name_path in sorted(glob.glob("/sys/class/video4linux/video*/name")):
         try:
-            card_name = open(name_path, "r", encoding="utf-8", errors="ignore").read().strip().lower()
+            with open(name_path, "r", encoding="utf-8", errors="ignore") as arquivo:
+                card_name = arquivo.read().strip().lower()
         except Exception:
             continue
-        
+
+        video_node = os.path.basename(os.path.dirname(name_path))
+        node_path = f"/dev/{video_node}"
+        if not os.path.exists(node_path) or any(nome in card_name for nome in _CAMERAS_DO_KINECT):
+            continue
+
         # Tenta match por ZED_NAME_HINT ou por pattern STEREOLABS ou USB generico
         is_match = (
             (ZED_NAME_HINT and ZED_NAME_HINT in card_name) or
@@ -47,15 +70,18 @@ def _zed_nodes_from_sysfs() -> list[str]:
             "stereo" in card_name or
             ("usb" in card_name and "video" in card_name)
         )
-        if not is_match:
-            continue
-
-        video_node = os.path.basename(os.path.dirname(name_path))
-        node_path = f"/dev/{video_node}"
-        if os.path.exists(node_path):
+        if is_match:
             nodes.append(node_path)
-            log.info("ZED device detectado via sysfs: %s (%s)", node_path, card_name)
-    return nodes
+            tipo = "ZED"
+        elif ZED_WEBCAM_GENERICA and _indice_do_node(name_path) == 0:
+            genericas.append(node_path)
+            tipo = "webcam"
+        else:
+            continue
+        if node_path not in _avisadas:
+            _avisadas.add(node_path)
+            log.info("Camera traseira candidata (%s): %s (%s)", tipo, node_path, card_name)
+    return nodes + genericas
 
 
 def _zed_candidate_sources() -> list:

@@ -32,6 +32,8 @@ ZED_JPEG_QUALITY = int(os.environ.get("AGV_ZED_JPEG_QUALITY", "60"))
 ZED_DEVICE = os.environ.get("AGV_ZED_DEVICE", "/dev/video0").strip() or "/dev/video0"
 ZED_NAME_HINT = os.environ.get("AGV_ZED_NAME_HINT", "zed").strip().lower() or "zed"
 ZED_STRICT_DEVICE = os.environ.get("AGV_ZED_STRICT_DEVICE", "1").strip() != "0"
+# Sem ZED conectada, usa qualquer outra webcam (ex.: a integrada do notebook) no lugar dela.
+ZED_WEBCAM_GENERICA = os.environ.get("AGV_ZED_WEBCAM_GENERICA", "1").strip() != "0"
 KINECT_RELEASE_UVCVIDEO = os.environ.get("AGV_KINECT_RELEASE_UVCVIDEO", "0").strip() == "1"
 MIN_FORWARD_PWM = int(os.environ.get("AGV_MIN_FORWARD_PWM", "170"))
 MIN_TURN_PWM = int(os.environ.get("AGV_MIN_TURN_PWM", "140"))
