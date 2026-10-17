@@ -20,6 +20,7 @@ from pc_agv.config import (
     IA_MAX_AMOSTRAS,
     IA_MIN_AMOSTRAS,
     IA_TREINO_AUTOMATICO,
+    LIDAR_MAX_M,
     log,
 )
 from pc_agv import estado
@@ -27,6 +28,7 @@ from pc_agv import util
 from pc_agv.aprendizado import entrada, politica, treino
 from pc_agv.aprendizado.banco import BancoAprendizado
 from pc_agv.aprendizado.rede import RedeNeural
+from pc_agv.hardware import rplidar
 
 
 PADROES = {"gravando": True, "explorar": False, "velocidade_max": 50}
@@ -146,7 +148,19 @@ def decidir(agora: Optional[float] = None) -> tuple[int, int, str]:
         motivo = "ia-explorando"
     velocidade, direcao = treino.para_comando(saida)
     frente = centro if centro is not None else distancia
-    return politica.aplicar_seguranca(int(round(velocidade)), int(round(direcao)), frente, velocidade_max, motivo)
+    tras = None
+    leitura = rplidar.leitura_recente(agora)
+    if leitura is not None:
+        # O LIDAR cobre a zona cega do Kinect (abaixo de ~0,5 m) e a traseira.
+        folgas = leitura["folgas"]
+        frente_lidar = folgas.get("frente")
+        frente_lidar = LIDAR_MAX_M if frente_lidar is None else frente_lidar
+        frente = frente_lidar if frente is None else min(frente, frente_lidar)
+        atras = [folgas.get(setor) for setor in ("tras", "tras_esq", "tras_dir")]
+        atras = [valor for valor in atras if valor is not None]
+        tras = min(atras) if atras else LIDAR_MAX_M
+    return politica.aplicar_seguranca(int(round(velocidade)), int(round(direcao)), frente, velocidade_max, motivo,
+                                      tras_m=tras)
 
 
 # ── Gravacao ────────────────────────────────────────────────────────

@@ -77,7 +77,8 @@ class SerialFalsa:
 def estado_isolado():
     """Restaura os dicionarios de estado compartilhado ao sair do bloco."""
     with contextlib.ExitStack() as pilha:
-        for dicionario in (estado.state, estado.control_state, estado.autopilot_state, estado.settings):
+        for dicionario in (estado.state, estado.control_state, estado.autopilot_state, estado.settings,
+                           estado.lidar_state):
             pilha.enter_context(patch.dict(dicionario))
         yield
 
@@ -144,8 +145,9 @@ def mapeamento_isolado(abrir: bool = True, tamanho_m: float = 12.0):
             "_trajetoria": [],
             "_varredura": np.zeros((0, 2)),
             "_estado": {"rodando": False, "somente_leitura": False, "mapa_id": None, "nome": None,
-                        "leituras": 0, "falhas": 0, "salvo": True},
+                        "leituras": 0, "falhas": 0, "salvo": True, "fonte": None},
             "_png": (-1, None),
+            "_ultima_volta_lidar": 0.0,
         }
         for nome, valor in valores.items():
             pilha.enter_context(patch.object(servico_mapa, nome, valor))

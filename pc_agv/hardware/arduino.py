@@ -13,6 +13,7 @@ from pc_agv.config import (
 )
 from pc_agv import estado
 from pc_agv import util
+from pc_agv.hardware import rplidar
 
 
 _arduino_lock = threading.Lock()
@@ -83,7 +84,8 @@ def _candidate_arduino_ports():
             continue
         seen.add(key)
         dedup.append(port)
-    return dedup
+    # A porta do RPLIDAR nunca e do Arduino: abri-la mandaria comandos ao laser.
+    return rplidar.portas_candidatas_ignoradas(dedup)
 
 
 def _close_arduino_locked() -> None:

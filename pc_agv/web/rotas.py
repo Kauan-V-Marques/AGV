@@ -20,6 +20,7 @@ from pc_agv import util
 from pc_agv.aprendizado import servico as aprendizado
 from pc_agv.hardware import arduino
 from pc_agv.hardware import kinect
+from pc_agv.hardware import rplidar
 from pc_agv.mapeamento import servico as mapeamento
 from pc_agv.visao import rostos
 from pc_agv.web import mjpeg
@@ -324,6 +325,11 @@ def _resposta_mapa(ok: bool, resultado):
     if not ok:
         return jsonify({"ok": False, "error": resultado}), _STATUS_ERRO_MAPA.get(resultado, 400)
     return jsonify({"ok": True, "resultado": resultado, "mapa": mapeamento.status_detalhado()})
+
+
+@app.route("/api/lidar")
+def route_lidar():
+    return jsonify({"ok": True, "lidar": rplidar.varredura_publica()})
 
 
 @app.route("/api/mapa/status")

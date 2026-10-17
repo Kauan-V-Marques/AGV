@@ -1,9 +1,14 @@
 """Servico do auto-mapeamento: odometria visual e mapa de ocupacao em tempo real.
 
-Enquanto o mapeamento esta ligado, a thread agv-mapeamento transforma cada quadro de
-profundidade numa varredura 2D, estima o movimento do AGV (odometria visual, sem
-encoders) e soma a varredura ao mapa. Os mapas podem ser salvos em logs/mapas.db e
-abertos depois para consulta.
+Enquanto o mapeamento esta ligado, a thread agv-mapeamento estima o movimento do AGV
+(odometria por casamento de varreduras, sem encoders) e soma as leituras ao mapa:
+
+- com o RPLIDAR online, a odometria casa as voltas de 360 graus do laser (muito mais
+  pontos e sem o campo estreito do Kinect) e o mapa recebe o laser e o Kinect, cada
+  um visto da sua posicao no AGV;
+- sem o LIDAR, tudo vem da faixa horizontal da profundidade do Kinect.
+
+Os mapas podem ser salvos em logs/mapas.db e abertos depois para consulta.
 """
 
 import math
@@ -27,7 +32,8 @@ from pc_agv import util
 from pc_agv.mapeamento import banco as banco_mapas
 from pc_agv.mapeamento import varredura
 from pc_agv.mapeamento.banco import BancoMapas
-from pc_agv.mapeamento.geometria import Pose, transformar
+from pc_agv.hardware import rplidar
+from pc_agv.mapeamento.geometria import Pose, compor, transformar
 from pc_agv.mapeamento.grade import Grade
 from pc_agv.mapeamento.odometria import Odometria
 
@@ -37,6 +43,7 @@ TRAJETORIA_PASSO_M = 0.05     # guarda um ponto da trajetoria a cada 5 cm
 TRAJETORIA_MAX = 20000
 TRAJETORIA_EXIBIDA = 600      # pontos mandados ao painel (a trajetoria e reduzida)
 VARREDURA_EXIBIDA = 90        # pontos da ultima varredura mandados ao painel
+LIDAR_PONTOS_ICP = 400        # voltas do laser maiores que isso sao reduzidas para o ICP
 NOME_MAX = 60
 AVANCO_MAX_CM = 100
 
@@ -49,7 +56,8 @@ _odometria = Odometria(avanco_m=_avanco_m)
 _trajetoria: list[tuple[float, float]] = []
 _varredura = np.zeros((0, 2))
 _estado = {"rodando": False, "somente_leitura": False, "mapa_id": None, "nome": None,
-           "leituras": 0, "falhas": 0, "salvo": True}
+           "leituras": 0, "falhas": 0, "salvo": True, "fonte": None}
+_ultima_volta_lidar = 0.0
 _png: tuple[int, Optional[bytes]] = (-1, None)
 
 
@@ -94,6 +102,36 @@ def _registrar_trajetoria(pose: Pose) -> None:
             del _trajetoria[: len(_trajetoria) - TRAJETORIA_MAX]
 
 
+def _kinect_fresco(agora: float) -> Optional[np.ndarray]:
+    """Varredura da faixa de profundidade do Kinect (referencial do Kinect), se recente."""
+    with estado.state_lock:
+        kinect_ok = bool(estado.state["kinect_ok"])
+        depth = estado.state["depth"]
+        is_mm = bool(estado.state["depth_mm"])
+        depth_at = float(estado.state["depth_at"])
+    if not kinect_ok or depth is None or agora - depth_at > PROFUNDIDADE_VELHA_S:
+        return None
+    return varredura.varredura(depth, is_mm)
+
+
+def _lidar_fresco(agora: float) -> Optional[tuple[np.ndarray, Pose]]:
+    """Volta nova do LIDAR no referencial do Kinect e a posicao do laser nesse referencial.
+
+    A pose do mapa e a do Kinect (que fica `_avanco_m` a frente do eixo das rodas); os
+    pontos do LIDAR vem no referencial do eixo e sao deslocados para ele.
+    """
+    global _ultima_volta_lidar
+    leitura = rplidar.leitura_recente(agora)
+    if leitura is None or leitura["at"] == _ultima_volta_lidar or len(leitura["pontos"]) == 0:
+        return None
+    _ultima_volta_lidar = leitura["at"]
+    pontos = leitura["pontos"] - np.array([_avanco_m, 0.0])
+    if len(pontos) > LIDAR_PONTOS_ICP:
+        pontos = pontos[:: int(np.ceil(len(pontos) / LIDAR_PONTOS_ICP))]
+    origem = Pose(rplidar.MONTAGEM.x_m - _avanco_m, rplidar.MONTAGEM.y_m, 0.0)
+    return pontos, origem
+
+
 def passo(agora: Optional[float] = None) -> bool:
     """Um quadro do mapeamento. Devolve True se a pose foi atualizada pela visao."""
     global _varredura
@@ -101,25 +139,38 @@ def passo(agora: Optional[float] = None) -> bool:
     with _lock:
         if not _estado["rodando"]:
             return False
-    with estado.state_lock:
-        kinect_ok = bool(estado.state["kinect_ok"])
-        depth = estado.state["depth"]
-        is_mm = bool(estado.state["depth_mm"])
-        depth_at = float(estado.state["depth_at"])
     with estado.control_lock:
         em_movimento = estado.control_state["active_speed"] != 0 or estado.control_state["active_steering"] != 0
-    if not kinect_ok or depth is None or agora - depth_at > PROFUNDIDADE_VELHA_S:
-        return False
 
-    pontos = varredura.varredura(depth, is_mm)
+    kinect = _kinect_fresco(agora)
+    lidar = _lidar_fresco(agora)
+    if lidar is not None:
+        fonte, pontos = "lidar", lidar[0]
+    elif kinect is not None and not rplidar.leitura_recente(agora):
+        fonte, pontos = "kinect", kinect
+    else:
+        return False  # sem sensor, ou o LIDAR esta online mas ainda nao fechou outra volta
+
     with _lock:
         if not _estado["rodando"]:
             return False
+        if _estado["fonte"] != fonte:
+            # Varreduras de sensores diferentes nao se casam: recomeca a referencia na pose atual.
+            _odometria.chave = None
+            _estado["fonte"] = fonte
         ok = _odometria.atualizar(pontos, em_movimento)
         _estado["leituras"] += 1
         if ok:
-            _grade.integrar(_odometria.pose, pontos)
-            _registrar_trajetoria(_odometria.pose)
+            pose = _odometria.pose
+            if lidar is not None:
+                pontos_lidar, origem = lidar
+                # Cada raio parte do proprio sensor: o laser de onde ele esta montado.
+                _grade.integrar(compor(pose, origem), pontos_lidar - np.array([origem.x, origem.y]))
+                if kinect is not None:
+                    _grade.integrar(pose, kinect)  # o que esta acima ou abaixo do plano do laser
+            else:
+                _grade.integrar(pose, pontos)
+            _registrar_trajetoria(pose)
             _estado["salvo"] = False
         else:
             _estado["falhas"] += 1
@@ -164,7 +215,8 @@ def _limpar() -> None:
     _odometria = Odometria(avanco_m=_avanco_m)
     _trajetoria.clear()
     _varredura = np.zeros((0, 2))
-    _estado.update(rodando=False, somente_leitura=False, mapa_id=None, nome=None, leituras=0, falhas=0, salvo=True)
+    _estado.update(rodando=False, somente_leitura=False, mapa_id=None, nome=None, leituras=0, falhas=0, salvo=True,
+                   fonte=None)
 
 
 def novo() -> tuple[bool, str]:
@@ -228,7 +280,7 @@ def abrir(mapa_id: int) -> tuple[bool, Any]:
         _odometria.distancia_m = float(mapa["distancia_m"])
         _varredura = np.zeros((0, 2))
         _estado.update(rodando=False, somente_leitura=True, mapa_id=int(mapa["id"]), nome=mapa["nome"],
-                       leituras=0, falhas=0, salvo=True)
+                       leituras=0, falhas=0, salvo=True, fonte=None)
     return True, int(mapa["id"])
 
 
@@ -307,7 +359,8 @@ def status_detalhado() -> dict:
         if _trajetoria and (not trajetoria or trajetoria[-1] != _trajetoria[-1]):
             trajetoria = trajetoria + [_trajetoria[-1]]
         return {
-            **{k: _estado[k] for k in ("rodando", "somente_leitura", "mapa_id", "nome", "leituras", "falhas", "salvo")},
+            **{k: _estado[k] for k in ("rodando", "somente_leitura", "mapa_id", "nome", "leituras", "falhas", "salvo",
+                                       "fonte")},
             "disponivel": _banco is not None,
             "erro": _erro_banco,
             "versao": _grade.versao,

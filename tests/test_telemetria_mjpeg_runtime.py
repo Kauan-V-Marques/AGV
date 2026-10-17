@@ -72,7 +72,7 @@ class TestRuntime(unittest.TestCase):
         runtime.stop_runtime()
         estado.stop_event.clear()
 
-    def test_sobe_as_sete_threads_uma_vez_e_encerra(self):
+    def test_sobe_as_oito_threads_uma_vez_e_encerra(self):
         chamadas = []
 
         def alvo(nome):
@@ -81,6 +81,7 @@ class TestRuntime(unittest.TestCase):
             return _rodar
 
         with patch("pc_agv.hardware.kinect.capture_loop", alvo("kinect")), \
+                patch("pc_agv.hardware.rplidar.lidar_loop", alvo("lidar")), \
                 patch("pc_agv.hardware.zed.capture_loop", alvo("zed")), \
                 patch("pc_agv.visao.rostos.face_worker_loop", alvo("rostos")), \
                 patch("pc_agv.controle.autopilot_loop", alvo("autopiloto")), \
@@ -100,9 +101,9 @@ class TestRuntime(unittest.TestCase):
 
         self.assertEqual(
             nomes,
-            ["agv-aprendizado", "agv-autopilot", "agv-control", "agv-kinect", "agv-mapeamento", "agv-zed", "agv-zed-face"],
+            ["agv-aprendizado", "agv-autopilot", "agv-control", "agv-kinect", "agv-lidar", "agv-mapeamento", "agv-zed", "agv-zed-face"],
         )
-        self.assertEqual(sorted(chamadas), ["aprendizado", "autopiloto", "controle", "kinect", "mapa", "rostos", "zed"])
+        self.assertEqual(sorted(chamadas), ["aprendizado", "autopiloto", "controle", "kinect", "lidar", "mapa", "rostos", "zed"])
         carregar.assert_called_once_with()
         abrir_banco.assert_called_once_with()
         fechar_banco.assert_called_once_with()

@@ -1,4 +1,4 @@
-"""Ciclo de vida das threads do agv (Kinect, ZED, rostos, autopiloto, controle, aprendizado e mapa)."""
+"""Ciclo de vida das threads do agv (Kinect, RPLIDAR, ZED, rostos, autopiloto, controle, aprendizado e mapa)."""
 
 import atexit
 import threading
@@ -9,7 +9,7 @@ from pc_agv.config import (
 from pc_agv import controle
 from pc_agv import estado
 from pc_agv.aprendizado import servico as aprendizado
-from pc_agv.hardware import arduino, kinect, zed
+from pc_agv.hardware import arduino, kinect, rplidar, zed
 from pc_agv.mapeamento import servico as mapeamento
 from pc_agv.visao import rostos
 
@@ -36,6 +36,7 @@ def start_runtime() -> None:
 
         specs = [
             ("agv-kinect", kinect.capture_loop),
+            ("agv-lidar", rplidar.lidar_loop),
             ("agv-zed-face", rostos.face_worker_loop),
             ("agv-zed", zed.capture_loop),
             ("agv-autopilot", controle.autopilot_loop),
@@ -63,7 +64,7 @@ def stop_runtime() -> None:
     arduino.close()
 
     for thread in list(_threads):
-        thread.join(timeout=1.0)
+        thread.join(timeout=1.5)
     _threads.clear()
     aprendizado.encerrar()
     mapeamento.encerrar()
