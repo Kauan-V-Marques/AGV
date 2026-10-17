@@ -118,6 +118,7 @@ def aprendizado_isolado(abrir: bool = True):
             "_contagem": {"operador": 0, "correcao": 0, "ia": 0, "total": 0},
             "_ultimo_id": 0,
             "_ultimo_movimento": 0.0,
+            "_ultimo_movimento_operador": 0.0,
         }
         for nome, valor in valores.items():
             pilha.enter_context(patch.object(servico, nome, valor))

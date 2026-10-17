@@ -51,6 +51,9 @@ _ultimo_id = 0
 _treino = {"rodando": False, "progresso": 0.0, "erro": None, "automatico": False, "iniciado_em": None}
 _coleta = {"sessao_id": None, "sessao_modo": None, "ultima_em": 0.0, "amostra_id": None, "origem": None}
 _ultimo_movimento = 0.0
+# So o movimento do operador: a parada logo depois de soltar a tecla vira exemplo, mas a
+# parada logo depois do modo autonomo (que nao e professor da IA) nao.
+_ultimo_movimento_operador = 0.0
 _rng = np.random.default_rng()
 
 
@@ -168,7 +171,7 @@ def decidir(agora: Optional[float] = None) -> tuple[int, int, str]:
 # ── Gravacao ────────────────────────────────────────────────────────
 def coletar(agora: Optional[float] = None) -> Optional[str]:
     """Um passo da gravacao. Devolve a origem da amostra gravada, ou None."""
-    global _ultimo_movimento, _ultimo_id
+    global _ultimo_movimento, _ultimo_movimento_operador, _ultimo_id
     agora = util.now() if agora is None else agora
     with estado.control_lock:
         modo = estado.control_state["mode"]
@@ -184,9 +187,11 @@ def coletar(agora: Optional[float] = None) -> Optional[str]:
     with _lock:
         if velocidade != 0 or direcao != 0:
             _ultimo_movimento = agora
+            if modo == "manual" and fonte not in FONTES_IGNORADAS:
+                _ultimo_movimento_operador = agora
         banco = _banco
         gravando = bool(_prefs["gravando"])
-        ultimo_movimento = _ultimo_movimento
+        ultimo_movimento = _ultimo_movimento_operador
     if banco is None or not gravando:
         return None
 

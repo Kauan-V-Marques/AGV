@@ -511,7 +511,7 @@ AGV/
 │       ├── rotas.py               # aplicação Flask e API REST
 │       ├── mjpeg.py               # streams MJPEG
 │       └── static/                # painel.html, painel.css, painel.js e js/ (um módulo por assunto)
-├── tests/                         # 274 testes, todos sem hardware (seção 22.1)
+├── tests/                         # 275 testes, todos sem hardware (seção 22.1)
 │   ├── apoio.py                   # serial falsa, parada controlada dos loops, isolamento do estado e dos bancos
 │   ├── simulador_kinect.py        # quadros de profundidade simulados numa sala (testes do mapa)
 │   ├── simulador_agv.py           # AGV virtual: Kinect, RPLIDAR, firmware e cinemática (seção 22.5)
@@ -1448,7 +1448,7 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | Arquivo | O que verifica | Testes |
 |---|---|---|
 | `test_controle.py` | Regras do modo autônomo (todas as faixas de distância), **watchdog parando o AGV** sem comando novo, watchdog desligado, modo autônomo, **modo IA e correção do operador** e falha de envio ao Arduino | 20 |
-| `test_aprendizado.py` | Miniatura e características da profundidade, gradiente da rede conferido numericamente, recompensa e pesos, banco SQLite (reabrir sem perder nada, banco corrompido preservado), gravação, treino automático e **ponta a ponta**: demonstrações → treino → a IA desvia para o lado certo e continua sabendo depois de reiniciar | 54 |
+| `test_aprendizado.py` | Miniatura e características da profundidade, gradiente da rede conferido numericamente, recompensa e pesos, banco SQLite (reabrir sem perder nada, banco corrompido preservado), gravação, treino automático e **ponta a ponta**: demonstrações → treino → a IA desvia para o lado certo e continua sabendo depois de reiniciar | 55 |
 | `test_mapeamento.py` | Poses e ICP, varredura, mapa de ocupação, banco dos mapas e **odometria numa sala simulada com ruído do Kinect**: parado sem deriva, reta + giro, curvas com o Kinect à frente do eixo, vista tapada e salto impossível recusado | 30 |
 | `test_config.py` | Pasta de dados no código-fonte, no executável e por `AGV_DADOS_DIR` | 4 |
 | `test_arduino_envio.py` / `test_arduino_serial.py` | Tabela do protocolo `aceleração,direção`, limite de velocidade, ré, cabo desconectado, conexão (sem pyserial, sem porta, sem permissão/`dialout`), leitura do retorno do firmware | 18 |
@@ -1461,7 +1461,7 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `test_simulacao.py` | **AGV virtual em malha fechada** (seção 22.5): armazém sem colisões, saída de beco sem saída, caixa na zona cega do Kinect, mapa com o laser dirigindo pelo autônomo, colisão do chassi e modelo do firmware | 6 |
 | `test_lidar.py` | Protocolo do RPLIDAR (comandos, amostras, realinhamento depois de lixo, ângulo impossível), abertura com serial falsa (motor, saúde com erro, sem resposta), referencial do AGV, máscara, folgas pela borda do chassi, thread publicando voltas, **autônomo com LIDAR** (zona cega do Kinect, lado encostado, ré quando encurralado, parede lateral), espaço de giro (recua até ter espaço, para sem saída, corredor estreito reto), ré da IA bloqueada e IA sem curva sem espaço, **mapa com o laser numa sala simulada**, **calibração da montagem** (recupera ângulo e posição; recusa parede reta), Arduino ignorando a porta do laser e as `ttyS`, webcam genérica, `agv.env` e `/api/lidar` | 41 |
 
-**Resumo:** 274 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV), em cerca de 20 s. Cobertura do pacote `pc_agv`: **90%**.
+**Resumo:** 275 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV), em cerca de 20 s. Cobertura do pacote `pc_agv`: **90%**.
 
 | Módulo | Cobertura | Módulo | Cobertura |
 |---|---|---|---|
@@ -1480,7 +1480,7 @@ O CI também **monta a imagem Docker** e **gera o executável do PyInstaller** n
 ```mermaid
 flowchart LR
     subgraph T["Testes e lint"]
-        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["274 testes com<br/>cobertura mínima de 80%"]
+        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["275 testes com<br/>cobertura mínima de 80%"]
     end
     subgraph D["Imagem Docker"]
         D1["docker build"] --> D2["Driver do Kinect<br/>importa na imagem"] --> D3["Servidor responde<br/>sem hardware"]
@@ -1614,6 +1614,7 @@ Só com o Kinect o AGV bate com decisão "livre": quando o obstáculo entra na z
 - **Só com o Kinect, um obstáculo na zona cega vira "caminho livre"** quando o fundo da janela tem leitura (seção 22.5); o LIDAR cobre isso, e o aviso de zona não medida (RF39) é o próximo passo para quem usar só o Kinect.
 - **A IA não usa o LIDAR como entrada:** a camada de segurança usa, mas a rede só vê a profundidade; treinada pelo autônomo, ela aprende pouco do que ele faz por causa do laser.
 - **Voltas do laser com o AGV em movimento** ficam levemente distorcidas (cada volta leva ~75 ms); por isso o mapa deve ser feito devagar.
+- **Partida depois de muitas reconexões do Kinect:** depois de dezenas de desconexões USB seguidas (teste de estresse), o servidor travou duas vezes na partida com erros de pacote do Kinect (`Expected 1748 data bytes`); um teste isolado do Kinect e uma nova partida resolveram, e 3 partidas seguidas foram normais (~15 s). Se acontecer, desligue e religue o USB do Kinect.
 - **Tilt do Kinect for Windows:** neste modelo a libfreenect não responde ao comando de tilt nem ao acelerômetro (`tilt sem resposta do acelerometro`); vídeo e profundidade funcionam normalmente.
 - **A imagem Docker não inclui FFmpeg:** dentro do container a ZED só abre pelo OpenCV.
 - **1ª build lenta:** o `face-recognition` compila o dlib do código-fonte.
@@ -1944,6 +1945,12 @@ gitGraph
 **Problema:** tirando o USB do Arduino, o log mostrou tentativas em `/dev/ttyS9`.
 **Causa:** a busca listava todas as portas, e a conexão aceita uma porta mesmo sem resposta do firmware: uma `ttyS` funcional viraria um Arduino falso que engoliria os comandos.
 **Solução:** as portas `ttyS*` saem da busca. Também a webcam religada passou a voltar em 3 s (antes ~19 s, por esperar 20 s após uma falha).
+
+### Problema 30 — A parada depois do modo autônomo virava exemplo do operador
+
+**Problema:** depois de testar o modo Autônomo e apertar a parada, o banco do aprendizado ganhou um exemplo de "operador" parado.
+**Causa:** nos 2 s depois de um movimento, a decisão de ficar parado é gravada (o operador soltou a tecla). A marca do "último movimento" contava também o movimento do autônomo, que não é professor da IA.
+**Solução:** uma marca própria para o movimento do operador; a do treino automático (AGV parado) continua contando qualquer movimento.
 
 ---
 
