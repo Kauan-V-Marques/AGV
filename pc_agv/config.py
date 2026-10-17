@@ -25,6 +25,8 @@ WATCHDOG_TIMEOUT_S = float(os.environ.get("AGV_WATCHDOG_TIMEOUT_S", "2.0"))
 VIDEO_FPS = int(os.environ.get("AGV_VIDEO_FPS", "6"))
 DEPTH_FPS = int(os.environ.get("AGV_DEPTH_FPS", "4"))
 ZED_FPS = int(os.environ.get("AGV_ZED_FPS", "60"))
+# FPS do stream da camera traseira para o navegador (o de cima e o da captura).
+ZED_STREAM_FPS = int(os.environ.get("AGV_ZED_STREAM_FPS", "10"))
 ZED_WIDTH = int(os.environ.get("AGV_ZED_WIDTH", "640"))
 ZED_HEIGHT = int(os.environ.get("AGV_ZED_HEIGHT", "360"))
 ZED_STREAM_MAX_WIDTH = int(os.environ.get("AGV_ZED_STREAM_MAX_WIDTH", "960"))

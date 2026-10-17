@@ -29,9 +29,32 @@ def _encode_jpeg(frame: np.ndarray, quality: int = 82) -> Optional[bytes]:
     return buffer.tobytes()
 
 
+# Quando cada camera entregou o ultimo quadro: um quadro igual ao ja enviado nao e
+# codificado nem mandado de novo (a webcam captura ~15 fps; reenviar o mesmo quadro
+# so gastava rede, que pode ser um Wi-Fi fraco).
+_CARIMBO = {"rgb": "last_frame_at", "depth": "depth_at", "zed": "zed_last_frame_at"}
+ESPERA_REENVIO_S = 1.0  # quadro de espera (sem camera): no maximo um por segundo
+
+
 def mjpeg_generator(kind: str, fps: int):
     interval = 1.0 / max(1, fps)
+    chave = _CARIMBO.get(kind, "zed_last_frame_at")
+    enviado = None       # carimbo do ultimo quadro enviado
+    espera_em = -1e9     # quando o ultimo quadro de espera foi enviado
     while True:
+        with estado.state_lock:
+            carimbo = estado.state.get(chave)
+            tem_quadro = estado.state["rgb" if kind == "rgb" else "depth" if kind == "depth" else "zed"] is not None
+        agora = time.monotonic()
+        if (tem_quadro and enviado is not None and carimbo == enviado) or \
+                (not tem_quadro and agora - espera_em < ESPERA_REENVIO_S):
+            time.sleep(interval)
+            continue
+        if tem_quadro:
+            enviado = carimbo
+        else:
+            espera_em, enviado = agora, None
+
         quality = 82
         if kind == "rgb":
             with estado.state_lock:

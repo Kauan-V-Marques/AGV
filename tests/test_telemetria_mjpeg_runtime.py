@@ -61,6 +61,22 @@ class TestMjpeg(unittest.TestCase):
         quadro = self._primeiro_quadro("depth", depth=profundidade, depth_mm=False)
         self.assertEqual(quadro.shape, (120, 160, 3))
 
+    def test_nao_reenvia_quadro_que_nao_mudou(self):
+        esperas = []
+
+        def esperar(_segundos):
+            esperas.append(1)
+            if len(esperas) == 3:
+                estado.state["last_frame_at"] = 10.5  # a camera entregou um quadro novo
+
+        with estado_isolado(), patch.object(mjpeg.time, "sleep", side_effect=esperar):
+            estado.state.update(rgb=np.zeros((60, 80, 3), np.uint8), last_frame_at=10.0)
+            gerador = mjpeg.mjpeg_generator("rgb", fps=10)
+            next(gerador)
+            self.assertTrue(next(gerador).startswith(b"--frame"))
+        # 1 espera depois do envio + 2 achando o mesmo quadro; o novo sai na 3a
+        self.assertEqual(len(esperas), 3)
+
     def test_zed_larga_e_reduzida(self):
         with patch.object(mjpeg, "ZED_STREAM_MAX_WIDTH", 320):
             quadro = self._primeiro_quadro("zed", zed=np.zeros((360, 640, 3), np.uint8))

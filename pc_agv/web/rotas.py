@@ -12,7 +12,7 @@ from pc_agv.config import (
     DEPTH_FPS,
     MAX_UPLOAD_MB,
     VIDEO_FPS,
-    ZED_FPS,
+    ZED_STREAM_FPS,
 )
 from pc_agv import estado
 from pc_agv import telemetria
@@ -90,7 +90,7 @@ def route_depth_map():
 
 @app.route("/zed")
 def route_zed():
-    return Response(mjpeg.mjpeg_generator("zed", ZED_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return Response(mjpeg.mjpeg_generator("zed", ZED_STREAM_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/api/video")
