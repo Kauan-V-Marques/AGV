@@ -1,0 +1,12 @@
+# AGV: nomes fixos para as portas seriais e ModemManager longe delas.
+# Instale com: sudo bash scripts/instalar_regras_udev.sh
+#
+# O ModemManager sonda toda porta serial nova enviando comandos AT: isso chega ao
+# Arduino como lixo (ARDUINO:ERROR:OVERFLOW) e pode atrapalhar o RPLIDAR.
+
+# Arduino com conversor FTDI FT232R  -> /dev/agv-arduino
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="agv-arduino", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
+# Arduino Uno original (USB nativo) -> /dev/agv-arduino
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0043", SYMLINK+="agv-arduino", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
+# RPLIDAR (adaptador Silicon Labs CP2102) -> /dev/rplidar
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="rplidar", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"

@@ -40,6 +40,11 @@ def _ensure_project_venv_python() -> None:
 
 _ensure_project_venv_python()
 
+# agv.env (configuracao local) precisa valer antes de o pc_agv ler as variaveis.
+from pc_agv import arquivo_env
+
+_ENV_APLICADAS = arquivo_env.carregar()
+
 from pc_agv.hardware.kinect import release_kinect_usb_claims
 from pc_agv.iniciar_sistema import create_server
 
@@ -169,8 +174,10 @@ signal.signal(signal.SIGINT, _handle_stop_signal)
 signal.signal(signal.SIGTERM, _handle_stop_signal)
 
 print("=" * 60)
-print("  agv | Site + Kinect + Arduino")
+print("  agv | Site + Kinect + RPLIDAR + Arduino")
 print("=" * 60)
+if _ENV_APLICADAS:
+    print("Configuracao do agv.env: " + ", ".join(sorted(_ENV_APLICADAS)))
 
 # Remove drivers de kernel que bloqueiam o Kinect via libusb (LIBUSB_ERROR_BUSY)
 release_kinect_usb_claims()

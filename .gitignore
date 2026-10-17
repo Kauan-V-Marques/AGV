@@ -27,3 +27,7 @@ Thumbs.db
 # Configuracoes pessoais de IDE/extensoes (nao fazem parte do projeto)
 .vscode/
 .idea/
+
+# Configuracao local da maquina (modelo em agv.env.exemplo)
+agv.env
+.coverage
