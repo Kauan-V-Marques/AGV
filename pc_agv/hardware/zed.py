@@ -33,6 +33,9 @@ def _zed_source_value(source_raw: str):
 
 
 _CAMERAS_DO_KINECT = ("kinect", "gspca", "xbox")
+# Depois de uma falha a camera so e tentada de novo apos este tempo (era 20 s: religada,
+# a webcam demorava ~19 s para voltar ao painel).
+NOVA_TENTATIVA_S = 5.0
 _avisadas: set[str] = set()
 
 
@@ -310,7 +313,7 @@ def capture_loop() -> None:
                     break
 
                 last_error = open_error
-                failed_until[candidate_key] = util.now() + 20.0
+                failed_until[candidate_key] = util.now() + NOVA_TENTATIVA_S
 
             if cap is None and proc is None:
                 with estado.state_lock:
@@ -336,7 +339,7 @@ def capture_loop() -> None:
                     with estado.state_lock:
                         estado.state["zed_ok"] = False
                         estado.state["zed_error"] = f"falha de leitura da webcam ZED em {selected_source}"
-                    failed_until[str(selected_source)] = util.now() + 20.0
+                    failed_until[str(selected_source)] = util.now() + NOVA_TENTATIVA_S
                     break
 
                 now = util.now()

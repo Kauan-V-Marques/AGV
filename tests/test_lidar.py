@@ -248,6 +248,14 @@ class TestPortaDoArduino(unittest.TestCase):
                 patch("serial.tools.list_ports.comports", return_value=[]):
             self.assertEqual(arduino._candidate_arduino_ports(), ["/dev/ttyUSB0"])
 
+    def test_arduino_nunca_tenta_as_portas_da_placa_mae(self):
+        info = type("Porta", (), {"device": "/dev/ttyS9"})()
+        with patch.object(rplidar, "porta_reservada", return_value=None), \
+                patch.dict(os.environ, {"AGV_ARDUINO_PORT": ""}), \
+                patch("glob.glob", side_effect=lambda padrao: ["/dev/ttyUSB0"] if "ttyUSB" in padrao else []), \
+                patch("serial.tools.list_ports.comports", return_value=[info]):
+            self.assertEqual(arduino._candidate_arduino_ports(), ["/dev/ttyUSB0"])
+
 
 class TestAutonomoComLidar(unittest.TestCase):
     def _comando(self, folgas, **kinect):

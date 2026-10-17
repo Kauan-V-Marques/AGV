@@ -45,6 +45,13 @@ _arduino_rx_state = {
 
 
 
+def _porta_da_placa_mae(port: str) -> bool:
+    """/dev/ttyS*: UARTs da placa-mae, nunca o Arduino USB. Como a conexao aceita uma porta
+    mesmo sem resposta do firmware, uma ttyS funcional viraria um "Arduino" falso que
+    engoliria os comandos de motor."""
+    return os.path.basename(os.path.realpath(port)).startswith("ttyS")
+
+
 def _candidate_arduino_ports():
     preferred = os.environ.get("AGV_ARDUINO_PORT", "").strip()
     ports = []
@@ -77,7 +84,7 @@ def _candidate_arduino_ports():
     dedup = []
     seen = set()
     for port in ports:
-        if not port:
+        if not port or _porta_da_placa_mae(port):
             continue
         key = os.path.realpath(port)
         if key in seen:
