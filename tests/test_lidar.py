@@ -7,11 +7,15 @@ from unittest.mock import patch
 import numpy as np
 
 from apoio import EventoDeParada, estado_isolado, mapeamento_isolado
+from simulador_agv import raios
+from simulador_kinect import quadro, sala
 
 from pc_agv import arquivo_env, controle, estado, util
 from pc_agv.aprendizado import politica
 from pc_agv.hardware import arduino, rplidar, zed
+from pc_agv.mapeamento import calibracao, varredura
 from pc_agv.mapeamento import servico as servico_mapa
+from pc_agv.mapeamento.geometria import Pose, compor
 from pc_agv.visao import lidar as geometria
 
 
@@ -436,6 +440,37 @@ class TestArquivoEnv(unittest.TestCase):
                 self.assertEqual(os.environ["AGV_TESTE_C"], "do ambiente")
             self.assertEqual(arquivo_env.carregar(os.path.join(pasta, "nao-existe.env")), [])
 
+
+
+class TestCalibracaoDaMontagem(unittest.TestCase):
+    """Kinect e laser simulados na mesma sala, com o laser montado girado e deslocado."""
+
+    def _varreduras(self, frente_graus: float, lidar_xy, pose_kinect):
+        segmentos = sala()
+        kinect = varredura.varredura(quadro(pose_kinect, segmentos), True)
+        # Com AGV_LIDAR_FRENTE_GRAUS = F, o angulo F do laser (horario) aponta para a
+        # frente: o laser esta girado +F (anti-horario) em relacao ao AGV.
+        pose_laser = compor(pose_kinect, Pose(lidar_xy[0], lidar_xy[1], math.radians(frente_graus)))
+        rng = np.random.default_rng(0)
+        voltas = []
+        for inicio in (0.0, 0.75, 1.5, 2.25):  # como a ferramenta: 4 voltas, cada uma comeca num angulo
+            angulos = np.arange(inicio, 360.0, 3.0)
+            distancias = raios(np.array([pose_laser.x, pose_laser.y]), pose_laser.theta - np.radians(angulos), segmentos)
+            voltas.append(geometria.para_agv(angulos, distancias + rng.normal(0.0, 0.01, distancias.shape))[0])
+        return kinect, np.vstack(voltas)
+
+    def test_recupera_angulo_e_posicao_do_laser(self):
+        kinect, laser = self._varreduras(120.0, (-0.25, 0.05), Pose(0.0, -0.3, math.radians(10)))
+        r = calibracao.calibrar(kinect, laser)
+        self.assertTrue(r.confiavel, r)
+        self.assertLess(abs((r.frente_graus - 120.0 + 180) % 360 - 180), 2.0)
+        self.assertAlmostEqual(r.lidar_x_m, -0.25, delta=0.04)
+        self.assertAlmostEqual(r.lidar_y_m, 0.05, delta=0.04)
+
+    def test_parede_reta_e_ambigua(self):
+        _, laser = self._varreduras(0.0, (0.0, 0.0), Pose(0.0, 0.0, 0.0))
+        parede = np.column_stack([np.full(40, 2.0), np.linspace(-0.6, 0.6, 40)])
+        self.assertFalse(calibracao.calibrar(parede, laser).confiavel)
 
 
 class TestRotaLidar(unittest.TestCase):
