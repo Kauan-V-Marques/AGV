@@ -961,6 +961,12 @@ svg .preenchido { fill: currentColor; stroke: none; }
 .dica.salvo svg { width: 15px; height: 15px; }
 
 /* ── Telemetria ───────────────────────────────────────────────────── */
+.quadro-radar { margin-bottom: var(--gap); }
+.radar { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--gap); align-items: center; }
+#radar-canvas { display: block; width: 100%; aspect-ratio: 1 / 1; max-height: 460px; border-radius: var(--raio); background: var(--quadro-2); }
+.radar-folgas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.radar-centro { display: grid; place-items: center; padding: 6px; text-align: center; font-size: 11px; color: var(--texto-suave); }
+
 .metrica {
   display: grid;
   gap: 6px;
@@ -1012,6 +1018,24 @@ body.hud-active { overflow: hidden; }
 .hud-chip.hud-warn { color: #ffb4b4; border-color: rgba(255, 120, 120, 0.5); }
 .hud-corner-pip { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; width: min(30vw, 260px); aspect-ratio: 4 / 3; overflow: hidden; border-radius: 10px; }
 .hud-corner-pip .stream { width: 100%; height: 100%; object-fit: cover; }
+.hud-pip-zed { top: calc(max(14px, env(safe-area-inset-top)) + min(22.5vw, 195px) + 10px); }
+.hud-pip-zed.hud-rosto { border-color: rgba(80, 230, 120, 0.9); box-shadow: 0 0 0 2px rgba(80, 230, 120, 0.35); }
+.hud-radar {
+  position: absolute;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(24vw, 230px);
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.hud-radar canvas { display: block; width: 100%; height: 100%; }
+.hud-radar .hud-pip-label { left: 50%; bottom: 8px; transform: translateX(-50%); white-space: nowrap; }
 .hud-pip-label { position: absolute; z-index: 1; left: 8px; bottom: 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
 .hud-telemetry { position: absolute; left: 14px; bottom: max(14px, env(safe-area-inset-bottom)); display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; }
 .hud-metric { display: flex; justify-content: space-between; gap: 24px; font-size: 13px; }
@@ -1358,6 +1382,7 @@ body.hud-active { overflow: hidden; }
   .grade-mapa { grid-template-columns: minmax(0, 1fr); grid-template-areas: "mapa" "controles" "salvos"; grid-template-rows: auto; }
   .mapa-area { min-height: 380px; }
   .grade-metricas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .radar { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 900px) {
@@ -1390,6 +1415,8 @@ body.hud-active { overflow: hidden; }
   .mapa-area { min-height: 320px; }
   .metrica.larga { grid-column: span 2; }
   .hud-corner-pip { width: 36vw; }
+  .hud-pip-zed { top: calc(max(14px, env(safe-area-inset-top)) + 27vw + 8px); }
+  .hud-radar { width: 34vw; left: auto; right: 14px; transform: none; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 100px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

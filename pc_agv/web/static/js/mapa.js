@@ -90,8 +90,9 @@ function aplicarStatus(novo) {
     detalhe = `erro ${fmt(novo.casamento.erro_cm, 1)} cm · ${Math.round(novo.casamento.casados * 100)}% casados`;
   } else {
     odometria = "aguardando";
-    detalhe = "sem leitura do Kinect";
+    detalhe = "sem leitura do LIDAR nem do Kinect";
   }
+  if (novo.fonte && novo.rodando) detalhe = `${novo.fonte === "lidar" ? "LIDAR 360°" : "Kinect"} · ${detalhe}`;
   definirTexto("mapa-odometria", odometria);
   definirTexto("mapa-odometria-detalhe", `${detalhe} · ${novo.falhas || 0} falhas em ${novo.leituras || 0}`);
 

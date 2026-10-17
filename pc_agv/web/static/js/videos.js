@@ -155,6 +155,7 @@ export function iniciarHud({ aoParar }) {
   const overlay = $("hud-overlay");
   const principal = $("hud-main-frame");
   const pip = $("hud-pip-frame");
+  const pipZed = $("hud-pip-zed");
   const joystickWrap = $("hud-joystick-wrap");
   const dica = $("hud-hint");
   const joystick = $("mobile-joystick");
@@ -163,6 +164,7 @@ export function iniciarHud({ aoParar }) {
   function abrir() {
     principal.appendChild(streams.rgb);
     pip.appendChild(streams.depth);
+    pipZed.appendChild(streams.zed); // webcam traseira com a caixa do rosto reconhecido
     overlay.hidden = false;
     document.body.classList.add("hud-active");
     if (uiState.isMobileControl) {
@@ -175,6 +177,7 @@ export function iniciarHud({ aoParar }) {
       dica.hidden = false;
     }
     requestRealFullscreen(overlay);
+    window.dispatchEvent(new Event("agv:hud"));
   }
 
   function fechar() {

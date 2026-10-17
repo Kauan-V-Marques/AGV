@@ -92,6 +92,7 @@
 
       <ul class="status-lista" aria-label="Componentes">
         <li class="status" id="st-kinect" data-estado="off"><span class="ponto"></span>Kinect</li>
+        <li class="status" id="st-lidar" data-estado="off"><span class="ponto"></span>LIDAR</li>
         <li class="status" id="st-zed" data-estado="off"><span class="ponto"></span>ZED</li>
         <li class="status" id="st-serial" data-estado="off"><span class="ponto"></span>Arduino</li>
         <li class="status" id="st-rede" data-estado="off" title="Tempo de resposta do AGV"><svg><use href="#i-sinal"/></svg><span id="st-rede-texto">-- ms</span></li>
@@ -141,7 +142,7 @@
           <article class="quadro q-proximidade">
             <header class="quadro-topo">
               <h2>Proximidade</h2>
-              <span class="quadro-sub">Kinect · profundidade</span>
+              <span class="quadro-sub" id="proximidade-fonte">Kinect · profundidade</span>
             </header>
             <div class="proximidade">
               <svg class="sensores" viewBox="0 0 220 170" aria-label="Distâncias à frente do AGV">
@@ -277,6 +278,26 @@
 
       <!-- ── Telemetria ──────────────────────────────────────────── -->
       <section class="secao" id="secao-telemetria" data-titulo="Telemetria" hidden>
+        <article class="quadro quadro-radar">
+          <header class="quadro-topo">
+            <h2>Radar 360°</h2>
+            <span class="quadro-sub" id="radar-sub">RPLIDAR · visto de cima, frente para cima</span>
+          </header>
+          <div class="radar">
+            <canvas id="radar-canvas" aria-label="Pontos do RPLIDAR em volta do AGV, vistos de cima"></canvas>
+            <div class="radar-folgas" aria-label="Folga entre a borda do AGV e o obstáculo mais próximo">
+              <div class="leitura" id="lidar-frente_esq" data-nivel="nenhum"><span>Frente-esq.</span><strong>--</strong></div>
+              <div class="leitura destaque" id="lidar-frente" data-nivel="nenhum"><span>Frente</span><strong>--</strong></div>
+              <div class="leitura" id="lidar-frente_dir" data-nivel="nenhum"><span>Frente-dir.</span><strong>--</strong></div>
+              <div class="leitura" id="lidar-esquerda" data-nivel="nenhum"><span>Esquerda</span><strong>--</strong></div>
+              <div class="radar-centro"><span>folga até a borda do AGV</span></div>
+              <div class="leitura" id="lidar-direita" data-nivel="nenhum"><span>Direita</span><strong>--</strong></div>
+              <div class="leitura" id="lidar-tras_esq" data-nivel="nenhum"><span>Trás-esq.</span><strong>--</strong></div>
+              <div class="leitura destaque" id="lidar-tras" data-nivel="nenhum"><span>Trás</span><strong>--</strong></div>
+              <div class="leitura" id="lidar-tras_dir" data-nivel="nenhum"><span>Trás-dir.</span><strong>--</strong></div>
+            </div>
+          </div>
+        </article>
         <article class="quadro">
           <header class="quadro-topo">
             <h2>Distâncias</h2>
@@ -294,7 +315,8 @@
           <div class="metrica"><span>Quadros por segundo</span><strong id="fps-status">--</strong></div>
           <div class="metrica"><span>Rosto</span><strong id="face-status">--</strong></div>
           <div class="metrica larga"><span>Kinect</span><strong id="kinect-status">--</strong></div>
-          <div class="metrica larga"><span>Câmera ZED</span><strong id="zed-status">--</strong></div>
+          <div class="metrica larga"><span>Câmera ZED / webcam</span><strong id="zed-status">--</strong></div>
+          <div class="metrica larga"><span>RPLIDAR</span><strong id="lidar-status">--</strong></div>
           <div class="metrica larga"><span>Arduino</span><strong id="serial-status">--</strong></div>
         </div>
       </section>
@@ -645,15 +667,24 @@
       <div class="hud-chip" id="hud-chip-mode">MODO --</div>
       <div class="hud-chip" id="hud-chip-kinect">KINECT --</div>
       <div class="hud-chip" id="hud-chip-serial">SERIAL --</div>
+      <div class="hud-chip" id="hud-chip-lidar">LIDAR --</div>
     </div>
     <div class="hud-corner-pip" id="hud-pip-frame">
       <span class="hud-pip-label">Profundidade</span>
+    </div>
+    <div class="hud-corner-pip hud-pip-zed" id="hud-pip-zed">
+      <span class="hud-pip-label" id="hud-zed-label">Traseira · rostos</span>
+    </div>
+    <div class="hud-radar" id="hud-radar">
+      <canvas id="hud-radar-canvas" aria-label="Radar 360° do RPLIDAR"></canvas>
+      <span class="hud-pip-label">LIDAR 360°</span>
     </div>
     <div class="hud-telemetry" id="hud-telemetry">
       <div class="hud-metric"><span>Dist</span><strong id="hud-distance">--</strong></div>
       <div class="hud-metric"><span>Esq</span><strong id="hud-left">--</strong></div>
       <div class="hud-metric"><span>Cen</span><strong id="hud-center">--</strong></div>
       <div class="hud-metric"><span>Dir</span><strong id="hud-right">--</strong></div>
+      <div class="hud-metric"><span>Trás</span><strong id="hud-rear">--</strong></div>
       <div class="hud-metric"><span>Cmd</span><strong id="hud-cmd">--</strong></div>
       <div class="hud-metric"><span>Fps</span><strong id="hud-fps">--</strong></div>
     </div>
