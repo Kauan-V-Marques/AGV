@@ -16,16 +16,27 @@ Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v
 - **`agv.env`**: configuração local lida pelo launcher (modelo em `agv.env.exemplo`).
 - `scripts/instalar_regras_udev.sh`: portas fixas `/dev/agv-arduino` e `/dev/rplidar`, ModemManager longe delas e blacklist do `gspca_kinect`.
 
+- **AGV virtual** (`tests/simulador_agv.py`): o código real do autônomo, da IA e do mapa dirigindo um AGV simulado com Kinect, RPLIDAR, firmware e cinemática; cenários em `tests/test_simulacao.py`.
+- `scripts/calibrar_lidar.py`: sugere a montagem do RPLIDAR encaixando a faixa do Kinect na volta do laser (recusa resultado fraco ou ambíguo).
+- `scripts/testar_reconexao.sh`: tira e recoloca cada USB com o sistema rodando e mede a recuperação.
+- `AGV_ZED_STREAM_FPS` (10): FPS do stream da câmera traseira, separado do da captura.
+
 ### Corrigido
 
+- **Mapa com LIDAR em movimento** perdia a posição (26% de erro do caminho): a normal das paredes exigia vizinhos a menos de 15 cm, e o laser tem um ponto a cada ~3°. Agora o limite acompanha o espaçamento: 0,3% a 0,6%.
+- **Autônomo** batia girando perto de parede e não saía de beco: com o LIDAR só gira com espaço para os cantos do chassi, recua em linha reta até ter espaço, e a ré depende só do corredor atrás; rente a uma parede segue reto.
+- **IA** batia dando ré e virando: sem espaço de giro, a segurança zera a direção.
+- O stream da câmera traseira reenviava o mesmo quadro (46,5 fps, 683 KB/s): os streams só mandam quadro novo (−78% de rede, CPU 121% → 81%).
+- O Arduino não tenta mais as portas `ttyS*` (uma delas viraria um Arduino falso); a webcam religada volta em 3 s (antes ~19 s).
 - O Arduino não tenta mais abrir a porta do RPLIDAR.
 - `scripts/instalar_freenect_python.sh` com `PYTHON=.venv/bin/python` (caminho relativo) e sem `curl`.
 - Arquivo do nome da câmera aberto sem ser fechado na busca da ZED.
 
 ### Qualidade
 
-- Testes de 225 para 257 (`tests/test_lidar.py`); cobertura do `pc_agv` em 89%.
-- Validado no notebook do AGV (Ubuntu 22.04.5, Python 3.10.12) com Kinect, RPLIDAR, webcam e Arduino ligados juntos.
+- Testes de 225 para 274 (`tests/test_lidar.py`, `tests/test_simulacao.py`); cobertura do `pc_agv` em 90%.
+- Validado no notebook do AGV (Ubuntu 22.04.5, Python 3.10.12) com Kinect, RPLIDAR, webcam e Arduino ligados juntos: firmware (sem mover os motores), reconexão de cada USB, desempenho dos streams, reconhecimento facial e modos pela API.
+- AGV virtual: 0 colisões em 36 min e 254 m no armazém simulado; mapa com o LIDAR com 0,3–0,6% de erro do caminho.
 
 ### Documentação
 
