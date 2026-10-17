@@ -355,11 +355,32 @@ def _ler_voltas(ser) -> None:
                 distancias.append(distancia)
 
 
+FALHAS_PARA_RESET = 3   # tentativas seguidas sem sucesso antes de mandar RESET ao laser
+RESET_ESPERA_S = 2.0    # o RPLIDAR leva ~2 s para reiniciar
+
+
+def _reiniciar(porta: str) -> None:
+    """Manda RESET (A5 40). Depois de um tranco no USB o laser as vezes fica sem responder
+    a nada (medido no AGV: ~1 min) ate ser reiniciado."""
+    import serial  # type: ignore[import-not-found]
+
+    ser = None
+    try:
+        ser = serial.Serial(port=porta, baudrate=LIDAR_BAUD, timeout=0.25, write_timeout=0.5, exclusive=True)
+        ser.write(comando(CMD_RESET))
+        estado.stop_event.wait(RESET_ESPERA_S)
+    except Exception:
+        pass
+    finally:
+        _fechar(ser, comandos=False)
+
+
 def lidar_loop() -> None:
     if not LIDAR_ENABLED:
         _marcar_erro("LIDAR desativado por ambiente (AGV_LIDAR_ENABLED=0)")
         return
     ultimo_aviso = ""
+    falhas = 0
     while not estado.stop_event.is_set():
         porta = descobrir_porta()
         if porta is None:
@@ -374,17 +395,24 @@ def lidar_loop() -> None:
             log.info("RPLIDAR conectado em %s (modelo 0x%02X, firmware %s, hardware %s, saude %s)",
                      os.path.realpath(porta), info["modelo"], info["firmware"], info["hardware"], info["saude"])
             ultimo_aviso = ""
+            falhas = 0
             _ler_voltas(ser)
         except Exception as exc:
             mensagem = str(exc) or exc.__class__.__name__
             if "Permission denied" in mensagem or "Errno 13" in mensagem:
                 mensagem = f"sem permissao para abrir {porta}; adicione o usuario ao grupo dialout"
             _marcar_erro(mensagem, porta=None)
+            falhas += 1
             if mensagem != ultimo_aviso:
                 log.warning("RPLIDAR: %s", mensagem)
                 ultimo_aviso = mensagem
         finally:
             _fechar(ser)
+        if falhas >= FALHAS_PARA_RESET and os.path.exists(porta):
+            log.warning("RPLIDAR: %d tentativas seguidas sem sucesso; enviando RESET", falhas)
+            _reiniciar(porta)
+            falhas = 0
+            continue
         estado.stop_event.wait(2.0)
     with estado.lidar_lock:
         estado.lidar_state["ok"] = False

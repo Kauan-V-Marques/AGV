@@ -32,6 +32,8 @@ Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v
 - **O RPLIDAR não voltava depois de muito tempo desconectado:** a busca do Arduino abria a porta do laser no instante em que ele reaparecia (antes do atalho `/dev/rplidar`) e ficava nela. Agora as portas são exclusivas, o Arduino só é aceito se o firmware responder (ouvindo até 3 s) e o adaptador CP210x do laser é reconhecido pelo USB.
 - **Pelo celular, picos de 1.000+ ms:** os vídeos somavam ~11 Mbit/s e enchiam o Wi-Fi do celular. O painel agora pede vídeo leve no celular (~2 Mbit/s) e mínimo em rede lenta (~0,5 Mbit/s); os streams aceitam `fps`, `q` e `w`.
 - Radar do HUD fora do centro (cobria a pista), menor, com botão **RADAR** para esconder; HUD ajustado para celular deitado e em pé.
+- RPLIDAR que para de responder (visto no AGV depois de trancos: ~1 min mudo) recebe RESET automático depois de 3 falhas seguidas.
+- HUD com o celular deitado em tela baixa (~300 px): a telemetria passa a duas colunas e não cobre mais o radar.
 - O Arduino não tenta mais abrir a porta do RPLIDAR.
 - A parada logo depois do modo Autônomo não vira mais exemplo do "operador" no aprendizado.
 - `scripts/instalar_freenect_python.sh` com `PYTHON=.venv/bin/python` (caminho relativo) e sem `curl`.

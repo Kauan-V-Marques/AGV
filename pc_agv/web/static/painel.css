@@ -1439,6 +1439,9 @@ body.hud-active { overflow: hidden; }
   .hud-corner-pip { width: min(24vw, 40vh); }
   .hud-pip-zed { top: calc(max(14px, env(safe-area-inset-top)) + min(18vw, 30vh) + 8px); }
   .hud-radar { width: 26vh; right: auto; left: 14px; top: 58px; }
+  /* Telemetria em duas colunas: com uma so, em telas de ~300 px ela subia e cobria o radar. */
+  .hud-telemetry { grid-template-columns: repeat(2, auto); column-gap: 14px; padding: 8px 10px; }
+  .hud-metric { gap: 10px; font-size: 12px; }
 }
 @media (max-width: 900px), (max-height: 500px) {
   .hud-chip { padding: 4px 7px; font-size: 10px; }

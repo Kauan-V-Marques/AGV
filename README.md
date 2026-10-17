@@ -511,7 +511,7 @@ AGV/
 │       ├── rotas.py               # aplicação Flask e API REST
 │       ├── mjpeg.py               # streams MJPEG
 │       └── static/                # painel.html, painel.css, painel.js e js/ (um módulo por assunto)
-├── tests/                         # 284 testes, todos sem hardware (seção 22.1)
+├── tests/                         # 285 testes, todos sem hardware (seção 22.1)
 │   ├── apoio.py                   # serial falsa, parada controlada dos loops, isolamento do estado e dos bancos
 │   ├── simulador_kinect.py        # quadros de profundidade simulados numa sala (testes do mapa)
 │   ├── simulador_agv.py           # AGV virtual: Kinect, RPLIDAR, firmware e cinemática (seção 22.5)
@@ -1461,7 +1461,7 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `test_simulacao.py` | **AGV virtual em malha fechada** (seção 22.5): armazém sem colisões, saída de beco sem saída, caixa na zona cega do Kinect, mapa com o laser dirigindo pelo autônomo, colisão do chassi e modelo do firmware | 6 |
 | `test_lidar.py` | Protocolo do RPLIDAR (comandos, amostras, realinhamento depois de lixo, ângulo impossível), abertura com serial falsa (motor, saúde com erro, sem resposta), referencial do AGV, máscara, folgas pela borda do chassi, thread publicando voltas, **autônomo com LIDAR** (zona cega do Kinect, lado encostado, ré quando encurralado, parede lateral), espaço de giro (recua até ter espaço, para sem saída, corredor estreito reto), ré da IA bloqueada e IA sem curva sem espaço, **mapa com o laser numa sala simulada**, **calibração da montagem** (recupera ângulo e posição; recusa parede reta), Arduino ignorando a porta do laser e as `ttyS`, webcam genérica, `agv.env` e `/api/lidar` | 47 |
 
-**Resumo:** 284 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV), em cerca de 20 s. Cobertura do pacote `pc_agv`: **90%**.
+**Resumo:** 285 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV), em cerca de 20 s. Cobertura do pacote `pc_agv`: **90%**.
 
 | Módulo | Cobertura | Módulo | Cobertura |
 |---|---|---|---|
@@ -1480,7 +1480,7 @@ O CI também **monta a imagem Docker** e **gera o executável do PyInstaller** n
 ```mermaid
 flowchart LR
     subgraph T["Testes e lint"]
-        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["284 testes com<br/>cobertura mínima de 80%"]
+        T1["Dependências do sistema<br/>e do Python"] --> T2["ruff check"] --> T3["Sintaxe dos<br/>módulos JS"] --> T4["285 testes com<br/>cobertura mínima de 80%"]
     end
     subgraph D["Imagem Docker"]
         D1["docker build"] --> D2["Driver do Kinect<br/>importa na imagem"] --> D3["Servidor responde<br/>sem hardware"]
@@ -1961,13 +1961,13 @@ gitGraph
 
 **Problema:** com o LIDAR fora por ~50 min (e o notebook suspenso nesse meio-tempo), ao religar ele respondia aos comandos mas nunca mandava a varredura ("parou de enviar dados" a cada 5 s). Reproduzido sem a suspensão: bastava ficar fora 60 s com o Arduino desconectado. Com 3 s fora, voltava.
 **Causa:** com o Arduino desconectado, a busca dele roda o tempo todo. Ao religar o laser, o kernel cria `/dev/ttyUSB0` um instante antes de o udev criar `/dev/rplidar`; nesse intervalo a busca não sabia que a porta era do laser, abriu-a e, como aceitava porta sem resposta do firmware, ficou "conectada" nela mandando `0,0` a 9600 baud por cima da varredura de 115200.
-**Solução:** (1) Arduino e LIDAR abrem a serial com trava exclusiva; (2) o Arduino só é aceito se o firmware se identificar (`READY`, `PONG`, `OK` ou `STATUS`), ouvindo a porta por até 3 s, porque o Arduino do AGV só fala ~2,6 s depois de abrir a porta; (3) a busca ignora o adaptador CP210x do laser pelo USB, sem depender do atalho; (4) se o laser nem respondeu, a porta é fechada sem mandar STOP (o `close()` esperava). Validado: LIDAR 60 s fora volta em 4 s; os dois 30 s fora voltam certos mesmo com as portas trocadas.
+**Solução:** (1) Arduino e LIDAR abrem a serial com trava exclusiva; (2) o Arduino só é aceito se o firmware se identificar (`READY`, `PONG`, `OK` ou `STATUS`), ouvindo a porta por até 3 s, porque o Arduino do AGV só fala ~2,6 s depois de abrir a porta; (3) a busca ignora o adaptador CP210x do laser pelo USB, sem depender do atalho; (4) se o laser nem respondeu, a porta é fechada sem mandar STOP (o `close()` esperava); (5) depois de 3 falhas seguidas, o laser recebe RESET (após um tranco no cabo ele chegou a ficar ~1 min sem responder). Validado: LIDAR 60 s fora volta em 4 s; os dois 30 s fora voltam certos mesmo com as portas trocadas.
 
 ### Problema 33 — Pelo celular, picos de mais de 1 s
 
 **Problema:** pelo celular, o tempo de resposta tinha picos de 1.000+ ms e o painel ficava inutilizável.
 **Causa:** o servidor respondia em 3 ms; o ping até o celular tinha média de 279 ms e picos de 739 ms. Os três vídeos somavam ~11 Mbit/s (cena com muito detalhe, 15 fps): num Wi-Fi de instituição, esse fluxo enchia o link do celular e a telemetria e os comandos esperavam na fila atrás deles.
-**Solução:** os streams aceitam `fps`, qualidade e largura menores; o painel usa o perfil *leve* (~2 Mbit/s) no celular e desce para o *mínimo* (~0,5 Mbit/s) se a mediana do tempo de resposta passar de 600 ms, subindo de novo abaixo de 250 ms (no máximo uma troca a cada 10 s). No HUD, o radar saiu do centro da tela (cobria a pista) para a coluna da direita, menor, com um botão para escondê-lo.
+**Solução:** os streams aceitam `fps`, qualidade e largura menores; o painel usa o perfil *leve* (~2 Mbit/s) no celular e desce para o *mínimo* (~0,5 Mbit/s) se a mediana do tempo de resposta passar de 600 ms, subindo de novo abaixo de 250 ms (no máximo uma troca a cada 10 s). No HUD, o radar saiu do centro da tela (cobria a pista) para a coluna da direita, menor, com um botão para escondê-lo; com o celular deitado em tela baixa (~300 px), a telemetria passa a duas colunas para não cobrir o radar.
 
 ---
 

@@ -306,6 +306,24 @@ class TestSerialPresa(unittest.TestCase):
             conectar.assert_not_called()
 
 
+class TestResetDoLidar(unittest.TestCase):
+    def test_reset_depois_de_tres_falhas_seguidas(self):
+        tentativas, resets = [], []
+
+        def falhar(porta):
+            tentativas.append(porta)
+            raise RuntimeError("sem resposta do RPLIDAR")
+
+        with estado_isolado(), patch.object(estado, "stop_event", EventoDeParada(voltas=3)), \
+                patch.object(rplidar, "LIDAR_ENABLED", True), \
+                patch.object(rplidar, "descobrir_porta", return_value="/dev/null"), \
+                patch.object(rplidar, "_abrir", side_effect=falhar), \
+                patch.object(rplidar, "_reiniciar", side_effect=resets.append):
+            rplidar.lidar_loop()
+        self.assertEqual(len(tentativas), 3)
+        self.assertEqual(resets, ["/dev/null"])
+
+
 class TestPortaDoArduino(unittest.TestCase):
     def test_arduino_nao_abre_a_porta_do_lidar(self):
         with patch.object(rplidar, "porta_reservada", return_value=os.path.realpath("/dev/ttyUSB1")), \
