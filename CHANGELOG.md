@@ -4,6 +4,47 @@ Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v
 
 ## [Não lançado]
 
+### Adicionado
+
+- **RPLIDAR 360°** somado ao Kinect (`pc_agv/hardware/rplidar.py`, `pc_agv/visao/lidar.py`): driver serial próprio do protocolo Slamtec (A1/A2/A3, sem SDK), thread `agv-lidar` que reconecta sozinha, volta convertida para o referencial do AGV e folga até a borda do chassi em 8 setores.
+- **Autônomo com LIDAR:** a frente usa a menor leitura entre Kinect e laser (cobre a zona cega do Kinect abaixo de ~0,5 m); não gira para o lado em que o chassi está encostado; dá ré lenta quando a frente e as diagonais fecham e a traseira está livre; afasta-se de parede lateral. Sem Kinect continua parando.
+- **IA com LIDAR:** a camada de segurança usa a frente combinada e bloqueia a ré com obstáculo a menos de 0,35 m atrás.
+- **Mapa com LIDAR:** a odometria casa as voltas de 360° do laser; o mapa recebe o laser e o Kinect, cada um da sua posição no AGV; sem o laser, volta ao Kinect.
+- **Radar 360°** na página *Telemetria* e no HUD, indicador LIDAR na barra superior e no HUD; rota `/api/lidar` e seção `lidar` em `/api/status`.
+- **HUD** com o vídeo da câmera traseira (detecção facial, borda verde e nome quando reconhece) e a folga traseira.
+- **Webcam no lugar da ZED:** sem ZED, a câmera traseira usa qualquer outra webcam (nunca o Kinect).
+- **`agv.env`**: configuração local lida pelo launcher (modelo em `agv.env.exemplo`).
+- `scripts/instalar_regras_udev.sh`: portas fixas `/dev/agv-arduino` e `/dev/rplidar`, ModemManager longe delas e blacklist do `gspca_kinect`.
+
+- **AGV virtual** (`tests/simulador_agv.py`): o código real do autônomo, da IA e do mapa dirigindo um AGV simulado com Kinect, RPLIDAR, firmware e cinemática; cenários em `tests/test_simulacao.py`.
+- `scripts/calibrar_lidar.py`: sugere a montagem do RPLIDAR encaixando a faixa do Kinect na volta do laser (recusa resultado fraco ou ambíguo).
+- `scripts/testar_reconexao.sh`: tira e recoloca cada USB com o sistema rodando e mede a recuperação.
+- `AGV_ZED_STREAM_FPS` (10): FPS do stream da câmera traseira, separado do da captura.
+
+### Corrigido
+
+- **Mapa com LIDAR em movimento** perdia a posição (26% de erro do caminho): a normal das paredes exigia vizinhos a menos de 15 cm, e o laser tem um ponto a cada ~3°. Agora o limite acompanha o espaçamento: 0,3% a 0,6%.
+- **Autônomo** batia girando perto de parede e não saía de beco: com o LIDAR só gira com espaço para os cantos do chassi, recua em linha reta até ter espaço, e a ré depende só do corredor atrás; rente a uma parede segue reto.
+- **IA** batia dando ré e virando: sem espaço de giro, a segurança zera a direção.
+- O stream da câmera traseira reenviava o mesmo quadro (46,5 fps, 683 KB/s): os streams só mandam quadro novo (−78% de rede, CPU 121% → 81%).
+- O Arduino não tenta mais as portas `ttyS*` (uma delas viraria um Arduino falso); a webcam religada volta em 3 s (antes ~19 s).
+- **Serial presa travava o painel e a parada de emergência** (`flush()` sem timeout segurando o lock da serial): sem `flush()`, leituras de estado com timeout, parada que muda o modo antes de enviar e não espera a serial, e "Write timeout" sem fechar a porta (a reconexão do Arduino caiu de até 34 s para 2–5 s).
+- **O RPLIDAR não voltava depois de muito tempo desconectado:** a busca do Arduino abria a porta do laser no instante em que ele reaparecia (antes do atalho `/dev/rplidar`) e ficava nela. Agora as portas são exclusivas, o Arduino só é aceito se o firmware responder (ouvindo até 3 s) e o adaptador CP210x do laser é reconhecido pelo USB.
+- **Pelo celular, picos de 1.000+ ms:** os vídeos somavam ~11 Mbit/s e enchiam o Wi-Fi do celular. O painel agora pede vídeo leve no celular (~2 Mbit/s) e mínimo em rede lenta (~0,5 Mbit/s); os streams aceitam `fps`, `q` e `w`.
+- Radar do HUD fora do centro (cobria a pista), menor, com botão **RADAR** para esconder; HUD ajustado para celular deitado e em pé.
+- RPLIDAR que para de responder (visto no AGV depois de trancos: ~1 min mudo) recebe RESET automático depois de 3 falhas seguidas.
+- HUD com o celular deitado em tela baixa (~300 px): a telemetria passa a duas colunas e não cobre mais o radar.
+- O Arduino não tenta mais abrir a porta do RPLIDAR.
+- A parada logo depois do modo Autônomo não vira mais exemplo do "operador" no aprendizado.
+- `scripts/instalar_freenect_python.sh` com `PYTHON=.venv/bin/python` (caminho relativo) e sem `curl`.
+- Arquivo do nome da câmera aberto sem ser fechado na busca da ZED.
+
+### Qualidade
+
+- Testes de 225 para 284 (`tests/test_lidar.py`, `tests/test_simulacao.py`); cobertura do `pc_agv` em 90%.
+- Validado no notebook do AGV (Ubuntu 22.04.5, Python 3.10.12) com Kinect, RPLIDAR, webcam e Arduino ligados juntos: firmware (sem mover os motores), reconexão de cada USB, desempenho dos streams, reconhecimento facial e modos pela API.
+- AGV virtual: 0 colisões em 36 min e 254 m no armazém simulado; mapa com o LIDAR com 0,3–0,6% de erro do caminho.
+
 ### Documentação
 
 - Cronograma técnico com as datas previstas de cada etapa e os responsáveis, iguais aos do quadro de tarefas (revisão de 16/10/2026).

@@ -343,6 +343,13 @@ class TestGravacao(unittest.TestCase):
             self.assertEqual(self._coletar("manual", 0, 0, "site-manual", agora=101.0), "operador")
             self.assertIsNone(self._coletar("manual", 0, 0, "site-manual", agora=104.0))
 
+    def test_parada_depois_do_autonomo_nao_vira_exemplo_do_operador(self):
+        # O autonomo nao e professor da IA: a parada logo depois dele tambem nao.
+        with estado_isolado(), aprendizado_isolado():
+            self.assertIsNone(self._coletar("auto", 48, 0, "autopilot", agora=100.0))
+            self.assertIsNone(self._coletar("manual", 0, 0, "site-manual", agora=100.5))
+            self.assertEqual(servico.status_snapshot()["amostras"]["total"], 0)
+
     def test_nao_grava_watchdog_autonomo_desligado_ou_quadro_velho(self):
         with estado_isolado(), aprendizado_isolado():
             self.assertIsNone(self._coletar("manual", 0, 0, "watchdog"))

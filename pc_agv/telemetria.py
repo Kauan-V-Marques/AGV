@@ -11,6 +11,7 @@ from pc_agv import util
 from pc_agv.aprendizado import servico as aprendizado
 from pc_agv.hardware import arduino as arduino_link
 from pc_agv.hardware import kinect
+from pc_agv.hardware import rplidar
 from pc_agv.mapeamento import servico as mapeamento
 from pc_agv.visao import rostos
 
@@ -69,6 +70,7 @@ def status_snapshot() -> dict:
             "frame_age_s": zed_frame_age,
             "device": estado.state.get("zed_device") or ZED_DEVICE,
         },
+        "lidar": rplidar.status_snapshot(),
         "face": rostos.face_status_snapshot(),
         "ia": aprendizado.status_snapshot(),
         "mapa": mapeamento.resumo(),

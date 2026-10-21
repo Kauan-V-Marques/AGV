@@ -15,11 +15,17 @@
 set -euo pipefail
 
 PYTHON="${PYTHON:-python3}"
+# Caminho absoluto: o script muda de pasta antes de compilar (ex.: PYTHON=.venv/bin/python).
+if [[ "$PYTHON" == */* ]]; then
+  PYTHON="$(cd "$(dirname "$PYTHON")" && pwd)/$(basename "$PYTHON")"
+fi
 VERSAO="${LIBFREENECT_VERSAO:-v0.7.5}"
 read -r -a PIP_EXTRA <<< "${PIP_ARGS:-}"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+
+command -v curl >/dev/null || { echo "curl nao encontrado: sudo apt install -y curl" >&2; exit 1; }
 
 echo ">> baixando OpenKinect/libfreenect ${VERSAO}"
 curl -fsSL "https://github.com/OpenKinect/libfreenect/archive/refs/tags/${VERSAO}.tar.gz" | tar -xz -C "$TMP"

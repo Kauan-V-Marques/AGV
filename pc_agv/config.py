@@ -25,6 +25,8 @@ WATCHDOG_TIMEOUT_S = float(os.environ.get("AGV_WATCHDOG_TIMEOUT_S", "2.0"))
 VIDEO_FPS = int(os.environ.get("AGV_VIDEO_FPS", "6"))
 DEPTH_FPS = int(os.environ.get("AGV_DEPTH_FPS", "4"))
 ZED_FPS = int(os.environ.get("AGV_ZED_FPS", "60"))
+# FPS do stream da camera traseira para o navegador (o de cima e o da captura).
+ZED_STREAM_FPS = int(os.environ.get("AGV_ZED_STREAM_FPS", "10"))
 ZED_WIDTH = int(os.environ.get("AGV_ZED_WIDTH", "640"))
 ZED_HEIGHT = int(os.environ.get("AGV_ZED_HEIGHT", "360"))
 ZED_STREAM_MAX_WIDTH = int(os.environ.get("AGV_ZED_STREAM_MAX_WIDTH", "960"))
@@ -32,6 +34,8 @@ ZED_JPEG_QUALITY = int(os.environ.get("AGV_ZED_JPEG_QUALITY", "60"))
 ZED_DEVICE = os.environ.get("AGV_ZED_DEVICE", "/dev/video0").strip() or "/dev/video0"
 ZED_NAME_HINT = os.environ.get("AGV_ZED_NAME_HINT", "zed").strip().lower() or "zed"
 ZED_STRICT_DEVICE = os.environ.get("AGV_ZED_STRICT_DEVICE", "1").strip() != "0"
+# Sem ZED conectada, usa qualquer outra webcam (ex.: a integrada do notebook) no lugar dela.
+ZED_WEBCAM_GENERICA = os.environ.get("AGV_ZED_WEBCAM_GENERICA", "1").strip() != "0"
 KINECT_RELEASE_UVCVIDEO = os.environ.get("AGV_KINECT_RELEASE_UVCVIDEO", "0").strip() == "1"
 MIN_FORWARD_PWM = int(os.environ.get("AGV_MIN_FORWARD_PWM", "170"))
 MIN_TURN_PWM = int(os.environ.get("AGV_MIN_TURN_PWM", "140"))
@@ -90,5 +94,29 @@ MAPA_DB_FILE = os.path.join(DADOS_DIR, "mapas.db")
 MAPA_HZ = float(os.environ.get("AGV_MAPA_HZ", "4"))
 MAPA_RESOLUCAO_M = float(os.environ.get("AGV_MAPA_RESOLUCAO_M", "0.05"))
 MAPA_TAMANHO_M = float(os.environ.get("AGV_MAPA_TAMANHO_M", "30"))
+# RPLIDAR (pc_agv/hardware/rplidar.py): laser 360 graus somado ao Kinect.
+LIDAR_ENABLED = os.environ.get("AGV_LIDAR_ENABLED", "1").strip() == "1"
+# Vazio = /dev/rplidar (regra udev do projeto) ou a primeira porta CP210x encontrada.
+LIDAR_PORT = os.environ.get("AGV_LIDAR_PORT", "").strip()
+LIDAR_BAUD = int(os.environ.get("AGV_LIDAR_BAUD", "115200"))
+# PWM do motor nos modelos A2/A3 (0 a 1023); o A1 liga o motor pelo DTR.
+LIDAR_MOTOR_PWM = int(os.environ.get("AGV_LIDAR_MOTOR_PWM", "660"))
+# Montagem: em que angulo do LIDAR (graus, sentido horario, como ele mede) fica a frente
+# do AGV, e onde ele esta em relacao ao eixo das rodas (m, x para a frente, y para a esquerda).
+LIDAR_FRENTE_GRAUS = float(os.environ.get("AGV_LIDAR_FRENTE_GRAUS", "0"))
+LIDAR_X_M = float(os.environ.get("AGV_LIDAR_X_M", "0"))
+LIDAR_Y_M = float(os.environ.get("AGV_LIDAR_Y_M", "0"))
+# Leituras mais perto que isso sao o proprio AGV (chassi, cabos, Kinect) ou ruido.
+LIDAR_MIN_M = float(os.environ.get("AGV_LIDAR_MIN_M", "0.15"))
+LIDAR_MAX_M = float(os.environ.get("AGV_LIDAR_MAX_M", "8.0"))
+# Faixas de angulo do AGV (graus, 0 = frente, positivo para a esquerda) a ignorar,
+# ex.: "170:190,85:95" para colunas do chassi que ficam na frente do laser.
+LIDAR_MASCARA = os.environ.get("AGV_LIDAR_MASCARA", "").strip()
+# Retangulo do AGV em torno do eixo das rodas: as folgas do LIDAR sao medidas da borda.
+AGV_FRENTE_M = float(os.environ.get("AGV_FRENTE_M", "0.30"))
+AGV_TRASEIRA_M = float(os.environ.get("AGV_TRASEIRA_M", "0.30"))
+AGV_LARGURA_M = float(os.environ.get("AGV_LARGURA_M", "0.50"))
+# Varredura mais velha que isso nao vale para seguranca nem para o mapa.
+LIDAR_VELHO_S = float(os.environ.get("AGV_LIDAR_VELHO_S", "0.6"))
 # Tamanho maximo de upload (foto de rosto); acima disso a API responde 413.
 MAX_UPLOAD_MB = float(os.environ.get("AGV_MAX_UPLOAD_MB", "10"))

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from pc_agv import estado
+from pc_agv import controle, estado
 from pc_agv.aprendizado import servico
 from pc_agv.hardware import arduino
 from pc_agv.mapeamento import servico as servico_mapa
@@ -77,7 +77,8 @@ class SerialFalsa:
 def estado_isolado():
     """Restaura os dicionarios de estado compartilhado ao sair do bloco."""
     with contextlib.ExitStack() as pilha:
-        for dicionario in (estado.state, estado.control_state, estado.autopilot_state, estado.settings):
+        for dicionario in (estado.state, estado.control_state, estado.autopilot_state, estado.settings,
+                           estado.lidar_state, controle._manobra):
             pilha.enter_context(patch.dict(dicionario))
         yield
 
@@ -117,6 +118,7 @@ def aprendizado_isolado(abrir: bool = True):
             "_contagem": {"operador": 0, "correcao": 0, "ia": 0, "total": 0},
             "_ultimo_id": 0,
             "_ultimo_movimento": 0.0,
+            "_ultimo_movimento_operador": 0.0,
         }
         for nome, valor in valores.items():
             pilha.enter_context(patch.object(servico, nome, valor))
@@ -144,8 +146,9 @@ def mapeamento_isolado(abrir: bool = True, tamanho_m: float = 12.0):
             "_trajetoria": [],
             "_varredura": np.zeros((0, 2)),
             "_estado": {"rodando": False, "somente_leitura": False, "mapa_id": None, "nome": None,
-                        "leituras": 0, "falhas": 0, "salvo": True},
+                        "leituras": 0, "falhas": 0, "salvo": True, "fonte": None},
             "_png": (-1, None),
+            "_ultima_volta_lidar": 0.0,
         }
         for nome, valor in valores.items():
             pilha.enter_context(patch.object(servico_mapa, nome, valor))

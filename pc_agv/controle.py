@@ -4,27 +4,85 @@ from pc_agv.config import (
     AUTO_LOOP_SECONDS,
     CONTROL_LOOP_SECONDS,
     IA_CORRECAO_JANELA_S,
+    LIDAR_MAX_M,
     WATCHDOG_TIMEOUT_S,
 )
 from pc_agv import estado
 from pc_agv import util
 from pc_agv.aprendizado import servico as aprendizado
-from pc_agv.hardware import arduino
+from pc_agv.hardware import arduino, rplidar
 
+
+
+PERIGO_M = 0.35
+ALERTA_M = 0.60
+ATENCAO_M = 0.95
+LATERAL_MIN_M = 0.12   # folga minima ao lado do chassi para girar para aquele lado
+RE_LIVRE_M = 0.40      # corredor livre atras para recuar em linha reta
+RE_VELOCIDADE = 25
+MANOBRA_VALIDA_S = 1.0  # o autopiloto chama a cada 0,18 s; mais que isso e outra situacao
+
+# Re iniciada por falta de espaco: continua ate haver espaco para girar (sem isso o AGV
+# recua um pouco, a frente "abre" e ele volta a entrar no mesmo lugar).
+_manobra = {"recuando": False, "em": 0.0}
+
+
+def _menor(*valores):
+    validos = [valor for valor in valores if valor is not None]
+    return min(validos) if validos else None
+
+
+def _lidar_ou_livre(folgas: dict, setor: str) -> float:
+    # O LIDAR ve 360 graus: setor sem ponto nenhum esta livre ate o alcance maximo.
+    valor = folgas.get(setor)
+    return LIDAR_MAX_M if valor is None else float(valor)
+
+
+def _lado_mais_livre(esquerda: float, direita: float, lado_esq, lado_dir) -> int:
+    """+1 = direita, -1 = esquerda. Nao escolhe um lado com o chassi colado em algo."""
+    if lado_dir is not None and lado_dir < LATERAL_MIN_M and (lado_esq is None or lado_esq >= LATERAL_MIN_M):
+        return -1
+    if lado_esq is not None and lado_esq < LATERAL_MIN_M and (lado_dir is None or lado_dir >= LATERAL_MIN_M):
+        return 1
+    return 1 if direita >= esquerda else -1
 
 
 def compute_autopilot_command() -> tuple[int, int, str]:
+    """Regras do autonomo com Kinect + RPLIDAR.
+
+    O Kinect ve a frente em 3D (inclusive o que esta acima ou abaixo do plano do laser),
+    mas nao mede abaixo de ~0,5 m. O RPLIDAR ve 360 graus num plano, de 0,15 m em
+    diante: cobre a zona cega do Kinect, as laterais e a traseira. A frente e as
+    diagonais usam a menor das duas leituras; os lados e a traseira, so o LIDAR.
+    Sem LIDAR (ou com a volta velha) as regras sao as do Kinect sozinho.
+    """
     with estado.state_lock:
         kinect_ok = bool(estado.state["kinect_ok"])
         left = estado.state["left_clearance_m"]
         center = estado.state["center_clearance_m"]
         right = estado.state["right_clearance_m"]
         distance = estado.state["distance_m"]
+    leitura = rplidar.leitura_recente()
 
+    # O LIDAR so ve um plano (nao ve mesa, degrau, objeto baixo): sem Kinect, para.
     if not kinect_ok:
         return 0, 0, "sem-kinect"
-    if center is None and distance is None:
+    if leitura is None and center is None and distance is None:
         return 0, 0, "sem-depth"
+
+    lado_esq = lado_dir = tras = None
+    pode_girar = True
+    if leitura is not None:
+        folgas = leitura["folgas"]
+        center = _menor(center if center is not None else distance, _lidar_ou_livre(folgas, "frente"))
+        left = _menor(left, _lidar_ou_livre(folgas, "frente_esq"))
+        right = _menor(right, _lidar_ou_livre(folgas, "frente_dir"))
+        lado_esq = _lidar_ou_livre(folgas, "esquerda")
+        lado_dir = _lidar_ou_livre(folgas, "direita")
+        # Re em linha reta: so o corredor da largura do AGV atras importa (as paredes
+        # laterais de um corredor aparecem nas diagonais traseiras e nao atrapalham).
+        tras = _lidar_ou_livre(folgas, "tras")
+        pode_girar = rplidar.pode_girar(leitura["pontos"])
 
     center_distance = center if center is not None else distance
     if center_distance is None:
@@ -32,16 +90,33 @@ def compute_autopilot_command() -> tuple[int, int, str]:
 
     left_value = left if left is not None else center_distance
     right_value = right if right is not None else center_distance
+    lado = _lado_mais_livre(left_value, right_value, lado_esq, lado_dir)
+    re_livre = tras is not None and tras >= RE_LIVRE_M
 
-    if center_distance < 0.35:
-        turn = 70 if right_value >= left_value else -70
-        return 0, turn, "obstaculo-muito-perto"
-    if center_distance < 0.60:
-        turn = 65 if right_value >= left_value else -65
-        return 18, turn, "desvio-curto"
-    if center_distance < 0.95:
-        turn = 45 if right_value >= left_value else -45
-        return 32, turn, "desvio-suave"
+    agora = util.now()
+    recuando = _manobra["recuando"] and agora - _manobra["em"] <= MANOBRA_VALIDA_S
+    _manobra["recuando"] = False
+    if recuando and not pode_girar and re_livre:
+        return _recuar(agora, "recuando")
+
+    if center_distance < PERIGO_M:
+        encurralado = left_value < PERIGO_M and right_value < PERIGO_M
+        if pode_girar and not (encurralado and re_livre and not recuando):
+            return 0, 70 * lado, "obstaculo-muito-perto"
+        if re_livre:
+            return _recuar(agora, "re-encurralado" if encurralado else "re-sem-espaco-para-girar")
+        if pode_girar:
+            return 0, 70 * lado, "obstaculo-muito-perto"
+        return 0, 0, "sem-saida"
+    if center_distance < ALERTA_M:
+        if not pode_girar:
+            # Lugar apertado: virar avancando raspa o canto; recua para ganhar espaco.
+            return _recuar(agora, "re-sem-espaco-para-girar") if re_livre else (0, 0, "sem-saida")
+        return 18, 65 * lado, "desvio-curto"
+    if center_distance < ATENCAO_M:
+        if not pode_girar:
+            return 18, 0, "estreito-em-frente"
+        return 32, 45 * lado, "desvio-suave"
 
     steering = 0
     if left is not None and right is not None:
@@ -49,7 +124,22 @@ def compute_autopilot_command() -> tuple[int, int, str]:
         steering = util.clamp(int(diff * 70.0), -35, 35)
         if abs(steering) < 8:
             steering = 0
+    if not pode_girar:
+        # Corredor estreito: qualquer direcao acima de ~17% vira curva fechada no
+        # firmware (a roda de dentro inverte), entao segue reto.
+        steering = 0
+    # Chassi rente a uma parede lateral: segue reto e mais devagar. Virar para longe
+    # dela e uma curva fechada no firmware, e a traseira varreria a propria parede.
+    if lado_esq is not None and lado_esq < LATERAL_MIN_M:
+        return 30, 0, "rente-a-esquerda"
+    if lado_dir is not None and lado_dir < LATERAL_MIN_M:
+        return 30, 0, "rente-a-direita"
     return 48, steering, "livre"
+
+
+def _recuar(agora: float, motivo: str) -> tuple[int, int, str]:
+    _manobra.update(recuando=True, em=agora)
+    return -RE_VELOCIDADE, 0, motivo
 
 
 def autopilot_loop() -> None:

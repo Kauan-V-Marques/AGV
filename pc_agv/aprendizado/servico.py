@@ -20,6 +20,7 @@ from pc_agv.config import (
     IA_MAX_AMOSTRAS,
     IA_MIN_AMOSTRAS,
     IA_TREINO_AUTOMATICO,
+    LIDAR_MAX_M,
     log,
 )
 from pc_agv import estado
@@ -27,6 +28,7 @@ from pc_agv import util
 from pc_agv.aprendizado import entrada, politica, treino
 from pc_agv.aprendizado.banco import BancoAprendizado
 from pc_agv.aprendizado.rede import RedeNeural
+from pc_agv.hardware import rplidar
 
 
 PADROES = {"gravando": True, "explorar": False, "velocidade_max": 50}
@@ -49,6 +51,9 @@ _ultimo_id = 0
 _treino = {"rodando": False, "progresso": 0.0, "erro": None, "automatico": False, "iniciado_em": None}
 _coleta = {"sessao_id": None, "sessao_modo": None, "ultima_em": 0.0, "amostra_id": None, "origem": None}
 _ultimo_movimento = 0.0
+# So o movimento do operador: a parada logo depois de soltar a tecla vira exemplo, mas a
+# parada logo depois do modo autonomo (que nao e professor da IA) nao.
+_ultimo_movimento_operador = 0.0
 _rng = np.random.default_rng()
 
 
@@ -146,13 +151,27 @@ def decidir(agora: Optional[float] = None) -> tuple[int, int, str]:
         motivo = "ia-explorando"
     velocidade, direcao = treino.para_comando(saida)
     frente = centro if centro is not None else distancia
-    return politica.aplicar_seguranca(int(round(velocidade)), int(round(direcao)), frente, velocidade_max, motivo)
+    tras = None
+    pode_girar = True
+    leitura = rplidar.leitura_recente(agora)
+    if leitura is not None:
+        # O LIDAR cobre a zona cega do Kinect (abaixo de ~0,5 m) e a traseira.
+        folgas = leitura["folgas"]
+        frente_lidar = folgas.get("frente")
+        frente_lidar = LIDAR_MAX_M if frente_lidar is None else frente_lidar
+        frente = frente_lidar if frente is None else min(frente, frente_lidar)
+        # so o corredor atras: num corredor as paredes laterais aparecem nas diagonais
+        tras = folgas.get("tras")
+        tras = LIDAR_MAX_M if tras is None else tras
+        pode_girar = rplidar.pode_girar(leitura["pontos"])
+    return politica.aplicar_seguranca(int(round(velocidade)), int(round(direcao)), frente, velocidade_max, motivo,
+                                      tras_m=tras, pode_girar=pode_girar)
 
 
 # ── Gravacao ────────────────────────────────────────────────────────
 def coletar(agora: Optional[float] = None) -> Optional[str]:
     """Um passo da gravacao. Devolve a origem da amostra gravada, ou None."""
-    global _ultimo_movimento, _ultimo_id
+    global _ultimo_movimento, _ultimo_movimento_operador, _ultimo_id
     agora = util.now() if agora is None else agora
     with estado.control_lock:
         modo = estado.control_state["mode"]
@@ -168,9 +187,11 @@ def coletar(agora: Optional[float] = None) -> Optional[str]:
     with _lock:
         if velocidade != 0 or direcao != 0:
             _ultimo_movimento = agora
+            if modo == "manual" and fonte not in FONTES_IGNORADAS:
+                _ultimo_movimento_operador = agora
         banco = _banco
         gravando = bool(_prefs["gravando"])
-        ultimo_movimento = _ultimo_movimento
+        ultimo_movimento = _ultimo_movimento_operador
     if banco is None or not gravando:
         return None
 

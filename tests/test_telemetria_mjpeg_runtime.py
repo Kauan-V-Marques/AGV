@@ -61,6 +61,22 @@ class TestMjpeg(unittest.TestCase):
         quadro = self._primeiro_quadro("depth", depth=profundidade, depth_mm=False)
         self.assertEqual(quadro.shape, (120, 160, 3))
 
+    def test_nao_reenvia_quadro_que_nao_mudou(self):
+        esperas = []
+
+        def esperar(_segundos):
+            esperas.append(1)
+            if len(esperas) == 3:
+                estado.state["last_frame_at"] = 10.5  # a camera entregou um quadro novo
+
+        with estado_isolado(), patch.object(mjpeg.time, "sleep", side_effect=esperar):
+            estado.state.update(rgb=np.zeros((60, 80, 3), np.uint8), last_frame_at=10.0)
+            gerador = mjpeg.mjpeg_generator("rgb", fps=10)
+            next(gerador)
+            self.assertTrue(next(gerador).startswith(b"--frame"))
+        # 1 espera depois do envio + 2 achando o mesmo quadro; o novo sai na 3a
+        self.assertEqual(len(esperas), 3)
+
     def test_zed_larga_e_reduzida(self):
         with patch.object(mjpeg, "ZED_STREAM_MAX_WIDTH", 320):
             quadro = self._primeiro_quadro("zed", zed=np.zeros((360, 640, 3), np.uint8))
@@ -72,7 +88,7 @@ class TestRuntime(unittest.TestCase):
         runtime.stop_runtime()
         estado.stop_event.clear()
 
-    def test_sobe_as_sete_threads_uma_vez_e_encerra(self):
+    def test_sobe_as_oito_threads_uma_vez_e_encerra(self):
         chamadas = []
 
         def alvo(nome):
@@ -81,6 +97,7 @@ class TestRuntime(unittest.TestCase):
             return _rodar
 
         with patch("pc_agv.hardware.kinect.capture_loop", alvo("kinect")), \
+                patch("pc_agv.hardware.rplidar.lidar_loop", alvo("lidar")), \
                 patch("pc_agv.hardware.zed.capture_loop", alvo("zed")), \
                 patch("pc_agv.visao.rostos.face_worker_loop", alvo("rostos")), \
                 patch("pc_agv.controle.autopilot_loop", alvo("autopiloto")), \
@@ -100,9 +117,9 @@ class TestRuntime(unittest.TestCase):
 
         self.assertEqual(
             nomes,
-            ["agv-aprendizado", "agv-autopilot", "agv-control", "agv-kinect", "agv-mapeamento", "agv-zed", "agv-zed-face"],
+            ["agv-aprendizado", "agv-autopilot", "agv-control", "agv-kinect", "agv-lidar", "agv-mapeamento", "agv-zed", "agv-zed-face"],
         )
-        self.assertEqual(sorted(chamadas), ["aprendizado", "autopiloto", "controle", "kinect", "mapa", "rostos", "zed"])
+        self.assertEqual(sorted(chamadas), ["aprendizado", "autopiloto", "controle", "kinect", "lidar", "mapa", "rostos", "zed"])
         carregar.assert_called_once_with()
         abrir_banco.assert_called_once_with()
         fechar_banco.assert_called_once_with()

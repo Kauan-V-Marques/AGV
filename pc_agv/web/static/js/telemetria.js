@@ -8,7 +8,7 @@ import { controlState } from "./estado.js";
 import { atualizarSetor, desenharGraficos, registrarLeitura } from "./graficos.js";
 import { atualizarEstadoRosto, updateFaceSelector } from "./rostos.js";
 import { $, definirTexto, fmtMetros, limitar, nivelDistancia } from "./util.js";
-import { marcarQuadros } from "./videos.js";
+import { marcarQuadros, registrarRtt } from "./videos.js";
 
 function definirEstado(id, estado) {
   const el = $(id);
@@ -46,6 +46,7 @@ export function updateTelemetry(snapshot, iniciadoEm = Date.now()) {
   const arduino = snapshot.arduino || {};
   const kinect = snapshot.kinect || {};
   const zed = snapshot.zed || {};
+  const lidar = snapshot.lidar || {};
   const face = snapshot.face || {};
   const settings = snapshot.settings || {};
   if ((agv.mode || "manual") !== controlState.mode && iniciadoEm > controlState.modoAlteradoEm) {
@@ -58,6 +59,8 @@ export function updateTelemetry(snapshot, iniciadoEm = Date.now()) {
   aplicarModoNaTela(modo);
   definirEstado("st-kinect", state.kinect_ok ? "ok" : "erro");
   definirEstado("st-zed", zed.online ? "ok" : "off");
+  definirEstado("st-lidar", lidar.online ? "ok" : (lidar.habilitado === false ? "off" : "erro"));
+  definirTexto("proximidade-fonte", lidar.online ? "Kinect + LIDAR (Radar 360° em Telemetria)" : "Kinect · profundidade");
   definirEstado("st-serial", arduino.connected ? "ok" : "erro");
 
   // ── proximidade ──
@@ -102,6 +105,10 @@ export function updateTelemetry(snapshot, iniciadoEm = Date.now()) {
   definirTexto("zed-status", zed.online
     ? `ok | atraso ${zed.frame_age_s ?? "--"}s | ${zed.fps ?? 0} fps`
     : (zed.error || "offline"));
+  const info = lidar.info || {};
+  definirTexto("lidar-status", lidar.online
+    ? `${lidar.porta || "usb"} | ${lidar.hz ?? 0} voltas/s | ${lidar.pontos ?? 0} pontos | fw ${info.firmware || "--"} | saúde ${info.saude || "--"}`
+    : (lidar.erro || "offline"));
   definirTexto("serial-status", arduino.connected
     ? `${arduino.port || "usb"} | ${arduino.last_command || "--"}`
     : (arduino.last_error || "desconectada"));
@@ -117,10 +124,17 @@ export function updateTelemetry(snapshot, iniciadoEm = Date.now()) {
   $("hud-chip-kinect").classList.toggle("hud-warn", !state.kinect_ok);
   definirTexto("hud-chip-serial", arduino.connected ? "serial conectada" : "serial desconectada");
   $("hud-chip-serial").classList.toggle("hud-warn", !arduino.connected);
+  definirTexto("hud-chip-lidar", lidar.online ? "lidar online" : "lidar offline");
+  $("hud-chip-lidar").classList.toggle("hud-warn", !lidar.online);
   definirTexto("hud-distance", fmtMetros(state.distance_m));
   definirTexto("hud-left", fmtMetros(state.left_clearance_m));
   definirTexto("hud-center", fmtMetros(state.center_clearance_m));
   definirTexto("hud-right", fmtMetros(state.right_clearance_m));
+  const folgasLidar = lidar.online ? (lidar.folgas || {}) : {};
+  const tras = ["tras", "tras_esq", "tras_dir"].map((s) => folgasLidar[s]).filter((v) => typeof v === "number");
+  definirTexto("hud-rear", lidar.online ? (tras.length ? fmtMetros(Math.min(...tras)) : "livre") : "--");
+  definirTexto("hud-zed-label", face.known ? `Traseira · ${face.label || "rosto"}` : "Traseira · rostos");
+  $("hud-pip-zed").classList.toggle("hud-rosto", !!face.known);
   definirTexto("hud-cmd", `${agv.active_speed ?? 0} / ${agv.active_steering ?? 0}`);
   definirTexto("hud-fps", `${state.fps_rgb || 0}`);
 
@@ -175,11 +189,13 @@ async function refreshStatus() {
     // Polling adaptativo: quanto mais rapido o RTT, mais frequente o poll.
     _statusInterval = rtt < 300 ? 500 : rtt < 800 ? 900 : 1800;
     _updateNetBanner(rtt);
+    registrarRtt(rtt);
   } catch (error) {
     clearTimeout(tid);
     _statusFail++;
     _statusInterval = Math.min(3000, 500 + _statusFail * 500);
     _updateNetBanner(null);
+    registrarRtt(null);
     console.warn("status timeout/erro #" + _statusFail);
   } finally {
     clearTimeout(_statusTimer);

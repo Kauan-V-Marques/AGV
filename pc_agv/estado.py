@@ -71,6 +71,21 @@ autopilot_state = {
     "last_tick": 0.0,
 }
 
+# RPLIDAR: ultima volta completa ja no referencial do AGV (pc_agv/hardware/rplidar.py).
+lidar_lock = threading.Lock()
+
+lidar_state = {
+    "ok": False,
+    "erro": None,
+    "porta": None,
+    "info": None,
+    "hz": 0.0,
+    "voltas": 0,
+    "at": 0.0,
+    "pontos": None,     # np.ndarray (N, 2), metros, referencial do AGV
+    "folgas": {},       # setor -> metros ate a borda do AGV (None = nada visto)
+}
+
 settings_lock = threading.Lock()
 
 settings = {

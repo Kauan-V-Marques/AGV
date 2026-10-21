@@ -4,6 +4,8 @@ import math
 import mimetypes
 import os
 import socket
+import threading
+from typing import Optional
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
@@ -12,7 +14,7 @@ from pc_agv.config import (
     DEPTH_FPS,
     MAX_UPLOAD_MB,
     VIDEO_FPS,
-    ZED_FPS,
+    ZED_STREAM_FPS,
 )
 from pc_agv import estado
 from pc_agv import telemetria
@@ -20,6 +22,7 @@ from pc_agv import util
 from pc_agv.aprendizado import servico as aprendizado
 from pc_agv.hardware import arduino
 from pc_agv.hardware import kinect
+from pc_agv.hardware import rplidar
 from pc_agv.mapeamento import servico as mapeamento
 from pc_agv.visao import rostos
 from pc_agv.web import mjpeg
@@ -77,19 +80,35 @@ def route_index():
     return response
 
 
+def _inteiro(nome: str, minimo: int, maximo: int) -> Optional[int]:
+    try:
+        valor = int(request.args.get(nome, ""))
+    except ValueError:
+        return None
+    return max(minimo, min(maximo, valor))
+
+
+def _stream(kind: str, fps_maximo: int) -> Response:
+    """Stream MJPEG. O painel pode pedir menos (?fps=, ?q= qualidade do JPEG, ?w= largura)
+    num celular ou numa rede lenta; nunca mais que o configurado no servidor."""
+    fps = _inteiro("fps", 1, max(1, fps_maximo)) or fps_maximo
+    gerador = mjpeg.mjpeg_generator(kind, fps, qualidade=_inteiro("q", 20, 95), largura=_inteiro("w", 160, 1920))
+    return Response(gerador, mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
 @app.route("/video")
 def route_video():
-    return Response(mjpeg.mjpeg_generator("rgb", VIDEO_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return _stream("rgb", VIDEO_FPS)
 
 
 @app.route("/depth_map")
 def route_depth_map():
-    return Response(mjpeg.mjpeg_generator("depth", DEPTH_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return _stream("depth", DEPTH_FPS)
 
 
 @app.route("/zed")
 def route_zed():
-    return Response(mjpeg.mjpeg_generator("zed", ZED_FPS), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return _stream("zed", ZED_STREAM_FPS)
 
 
 @app.route("/api/video")
@@ -228,9 +247,19 @@ def route_settings():
         return jsonify({"ok": True, "settings": dict(estado.settings)})
 
 
+def _enviar_parada() -> threading.Thread:
+    """0,0 imediato numa thread propria: a resposta da parada nunca espera a serial (se
+    ela estiver presa, o agv-control segue mandando 0,0 e o firmware para em 500 ms)."""
+    envio = threading.Thread(target=arduino.send_to_arduino, args=(0, 0, "manual", "stop"),
+                             kwargs={"conectar": False}, daemon=True, name="agv-parada")
+    envio.start()
+    return envio
+
+
 @app.route("/api/stop", methods=["POST"])
 def route_stop():
-    arduino.send_to_arduino(0, 0, "manual", "stop")
+    # Primeiro o estado: mesmo que a serial esteja presa ou desconectada, o modo volta a
+    # manual e o agv-control passa a mandar 0,0. So depois o 0,0 imediato, sem reconectar.
     with estado.control_lock:
         modo_anterior = estado.control_state["mode"]
         estado.control_state["mode"] = "manual"
@@ -242,6 +271,7 @@ def route_stop():
         estado.control_state["last_source"] = "stop"
         estado.control_state["arduino_sent"] = True
         estado.control_state["arduino_error"] = None
+    _enviar_parada()
     if modo_anterior == "ia":
         # A IA levou o operador a apertar a parada: isso entra como penalidade no treino.
         aprendizado.registrar_parada()
@@ -324,6 +354,11 @@ def _resposta_mapa(ok: bool, resultado):
     if not ok:
         return jsonify({"ok": False, "error": resultado}), _STATUS_ERRO_MAPA.get(resultado, 400)
     return jsonify({"ok": True, "resultado": resultado, "mapa": mapeamento.status_detalhado()})
+
+
+@app.route("/api/lidar")
+def route_lidar():
+    return jsonify({"ok": True, "lidar": rplidar.varredura_publica()})
 
 
 @app.route("/api/mapa/status")
