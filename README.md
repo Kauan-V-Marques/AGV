@@ -264,7 +264,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | FFmpeg | Pacote da distribuição (opcional) | Captura alternativa da ZED quando o OpenCV não abre o dispositivo |
 | HTML5, CSS e JavaScript | — (sem frameworks; módulos ES nativos, sem etapa de build) | Painel web e HUD em `pc_agv/web/static/` |
 | SQLite | 3 (módulo `sqlite3` da biblioteca padrão do Python) | Bancos do aprendizado (`logs/aprendizado.db`) e dos mapas (`logs/mapas.db`) |
-| Arduino (C++) | ⚠️ PREENCHER: versão da Arduino IDE usada | Firmware de controle dos motores |
+| Arduino (C++) | 2.3.10 | Firmware de controle dos motores |
 | Docker Engine + Compose | Compose v2 (`docker compose`) | Empacotamento e execução no notebook do AGV |
 | PyInstaller | 6.x (testado 6.18.0) | Executável único `dist/launch_production` |
 | setuptools | < 81 | Mantém o `pkg_resources`, usado pelo `face_recognition_models` |
@@ -284,9 +284,9 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | LIDAR 2D | Slamtec RPLIDAR, família A1/A2 (GET_INFO: modelo 0x26, firmware 1.24, hardware 5) ⚠️ CONFERIR modelo na etiqueta | 360°, serial 115200 baud pelo adaptador CP2102 (`/dev/rplidar`); cerca de 13 voltas/s e 120 pontos por volta com o PWM padrão; o software usa de 0,15 m a 8 m | Folgas em 360°, autônomo, segurança da IA, mapa e radar do painel |
 | Microcontrolador | Arduino Uno (no AGV atual, ligado por um conversor USB FTDI FT232R: `/dev/agv-arduino`) | Serial USB 9600 baud; PWM nos pinos 5 e 9 | Recebe `aceleração,direção` e aciona os motores |
 | Controladores de motor | 2× controlador BLDC YWMJZEU | Entradas PWM, DIR e BRAKE | Potência dos motores direito e esquerdo |
-| Motores | 2× motor BLDC ⚠️ PREENCHER modelo | Tração diferencial | Movimento do AGV |
-| Computador embarcado | Notebook ⚠️ PREENCHER fabricante/modelo | Linux x86_64, Ubuntu 22.04.5 LTS (kernel 6.8), Python 3.10.12 | Roda o servidor, Kinect, RPLIDAR, câmera traseira e serial. Todo o software atual foi desenvolvido, testado e validado nele |
-| Dispositivo do operador | ⚠️ PREENCHER (PC e/ou celular usados nos testes) | Navegador com Wi-Fi | Painel web e HUD |
+| Motores | 2× Rodas de Hover 6.5" 250W 36V | Tração diferencial | Movimento do AGV |
+| Computador embarcado | Notebook Dell Inspiron 13 | Linux x86_64, Ubuntu 22.04.5 LTS (kernel 6.8), Python 3.10.12 | Roda o servidor, Kinect, RPLIDAR, câmera traseira e serial. Todo o software atual foi desenvolvido, testado e validado nele |
+| Dispositivo do operador | Smartphone Motorola Moto G70 | Navegador com Wi-Fi | Painel web e HUD |
 
 > **Raspberry Pi 5 → notebook.** O AGV foi orçado e construído originalmente para uma Raspberry Pi 5, que queimou durante o desenvolvimento. Ela foi substituída por um notebook Linux embarcado, e tudo o que está neste repositório roda e foi validado no notebook, não na Raspberry Pi (ver [Problema 9](#problema-9--raspberry-pi-5-queimou)).
 >
@@ -1537,16 +1537,16 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 | Reconhecimento facial | Cadastrar o rosto visto pela webcam, selecionar e aguardar | Caixa e nome sobre o rosto | Reconhecido em menos de 2 s, distância 0,46 (limite 0,52); HUD com borda verde e o nome. Cadastro de teste apagado em seguida (17/10/2026) | ✅ |
 | Modos e API com sensores reais | Serial desligada (`AGV_ARDUINO_ENABLED=0`): modo IA sem modelo, Autônomo, parada, limite de velocidade, reconectar Kinect | Respostas certas e nenhum comando aos motores | IA sem modelo: 409; o autônomo decide com o Kinect e o laser reais; parada volta ao manual 0/0; Kinect reconecta em ~1 s (17/10/2026) | ✅ |
 | Tilt do Kinect | **Subir** em *Configurações* | Kinect inclina | A API aceita, mas o motor do *Kinect for Windows* não responde pela libfreenect | ❌ |
-| Montagem do LIDAR | Com os sensores fixos no AGV: `scripts/calibrar_lidar.py` e depois obstáculos à frente, à esquerda e atrás | Cada um no setor certo do radar | ⚠️ PREENCHER (na bancada a ferramenta recusou: Kinect vendo só uma superfície reta) | ⚠️ |
-| Motores | Rodas suspensas: W/A/S/D e depois o modo Autônomo | As rodas giram no sentido certo; **D vira para a direita** | ⚠️ PREENCHER: o modelo do firmware supõe que D vira para a direita; se virar para a esquerda, o autônomo e a IA ficam invertidos | ⚠️ |
-| Distância medida × trena | Obstáculo a 0,5 m, 1 m e 2 m à frente | Valor do HUD próximo da trena | ⚠️ PREENCHER | ⚠️ |
-| Condução manual | W/A/S/D no PC e joystick no celular | AGV obedece aos comandos | ⚠️ PREENCHER | ⚠️ |
-| Parada total | Clicar em **PARADA DE EMERGÊNCIA** em movimento | AGV para imediatamente | ⚠️ PREENCHER | ⚠️ |
-| Perda de conexão | Fechar a aba / desligar o Wi-Fi em movimento | AGV para em até 2 s | ⚠️ PREENCHER | ⚠️ |
-| Modo autônomo | Obstáculo no caminho em modo **Autônomo** | AGV desvia ou para | ⚠️ PREENCHER | ⚠️ |
-| Reconhecimento facial | Cadastrar e selecionar uma pessoa | Caixa e nome sobre o rosto na ZED | ⚠️ PREENCHER | ⚠️ |
-| Modo IA | Gravar ~5 min de direção manual num percurso com obstáculos, treinar e ligar o modo IA | AGV desvia como o operador; correções obedecidas | ⚠️ PREENCHER | ⚠️ |
-| Mapa de um ambiente real | Medir o avanço do Kinect, mapear um corredor/sala e comparar com a planta (trena) | Paredes retas e no lugar; erro de posição pequeno ao voltar ao início | ⚠️ PREENCHER | ⚠️ |
+| Montagem do LIDAR | Com os sensores fixos no AGV: `scripts/calibrar_lidar.py` e depois obstáculos à frente, à esquerda e atrás | Cada um no setor certo do radar | Houve sucesso na criação de um plano 2D de baixa precisão | ✅ |
+| Motores | Rodas suspensas: W/A/S/D e depois o modo Autônomo | As rodas giram no sentido certo; **WASD** | O AGV respeita com precisão os comandos do operador | ✅ |
+| Distância medida × trena | Obstáculo a 0,5 m, 1 m e 2 m à frente | Valor do HUD próximo da trena | Distâncias mínimas de 0.4m no Kinect e 0.6m no LIDAR | ✅ |
+| Condução manual | W/A/S/D no PC e joystick no celular | AGV obedece aos comandos | A condução manual segue os comandos do seu operador | ✅ |
+| Parada total | Clicar em **PARADA DE EMERGÊNCIA** em movimento | AGV para imediatamente | Fail Safe apresentou problemas em pane elétrica | ❌ |
+| Perda de conexão | Fechar a aba / desligar o Wi-Fi em movimento | AGV para em até 2 s | O AGV não parou durante a queda de conexão | ❌ |
+| Modo autônomo | Obstáculo no caminho em modo **Autônomo** | AGV desvia ou para | O AGV consegue desviar de obstáculos de grande porte, mas apresenta dificuldades com obstáculos menores | ✅ |
+| Reconhecimento facial | Cadastrar e selecionar uma pessoa | Caixa e nome sobre o rosto na ZED | O AGV é capaz de reconhecer rostos de forma coletiva ou individual | ✅ |
+| Modo IA | Gravar ~5 min de direção manual num percurso com obstáculos, treinar e ligar o modo IA | AGV desvia como o operador; correções obedecidas | O AGV consegue armazenar e percorrer o trajeto pré-determinado | ✅ |
+| Mapa de um ambiente real | Medir o avanço do Kinect, mapear um corredor/sala e comparar com a planta (trena) | Paredes retas e no lugar; erro de posição pequeno ao voltar ao início | É possível realizar o desenho do mapa, mas apresenta falhas de escala | ✅ |
 
 ### 22.5 AGV virtual (simulação em malha fechada)
 
@@ -1585,7 +1585,7 @@ Só com o Kinect o AGV bate com decisão "livre": quando o obstáculo entra na z
 |---|---|---|---|
 | Notebook de desenvolvimento (navegador Microsoft Edge 155) | Windows 10 Pro | 22H2 (build 19045) | Painel e HUD funcionam sem hardware; launcher não roda (usa `fcntl`, exclusivo de Linux) |
 | Notebook embarcado do AGV | Ubuntu 22.04.5 LTS, kernel 6.8, Python 3.10.12 | libfreenect 0.5.3 + driver Python 0.7.5 | Kinect, RPLIDAR, webcam, Arduino e painel funcionando juntos; 257 testes aprovados (17/10/2026) |
-| Celular do operador | ⚠️ PREENCHER | ⚠️ PREENCHER | ⚠️ PREENCHER |
+| Celular do operador | Android | 14 | O celular é capaz de acessar a interface, exibir suas informações e realizar comandos através da mesma |
 
 > Só entram aqui dispositivos realmente testados.
 
@@ -1628,9 +1628,9 @@ Só com o Kinect o AGV bate com decisão "livre": quando o obstáculo entra na z
 ## 25. Evidências de Funcionamento
 
 - Capturas do painel, do HUD, do celular e das páginas Aprendizado, Mapa e Configurações: [seção 21](#21-interface).
-- Validação da odometria visual em simulação: [seção 22.3](#223-odometria-visual-em-simulação).
-- ⚠️ PREENCHER: foto do AGV montado (salvar em `docs/images/agv.jpg`).
-- ⚠️ PREENCHER: captura do HUD com o vídeo real do Kinect e as distâncias preenchidas (salvar em `docs/images/hud-kinect-real.png`).
+- Validação da odometria visual em simulação: [seção 22.3](#223-odometria-visual-em-simulação)
+- Foto do AGV montado ![image](docs/images/agv.jpg)
+- Captura do HUD com o vídeo real do Kinect ![image](docs/images/hud-agv.jpg)
 - ⚠️ PREENCHER: vídeo de demonstração — `[Assistir demonstração](LINK_DO_VIDEO)`.
 
 ---
@@ -1997,7 +1997,7 @@ gitGraph
 | Python, Flask, OpenCV, NumPy, face_recognition, libfreenect | Software | Gratuito, código aberto |
 | Docker Engine | Software | Gratuito no Linux |
 | Arduino IDE | Software | Gratuito |
-| Kinect v1, câmera ZED, Arduino Uno, controladores e motores BLDC, notebook embarcado | Hardware | ⚠️ PREENCHER: equipamento da equipe ou da instituição |
+| Kinect v1, câmera ZED, Arduino Uno, controladores e motores BLDC, notebook embarcado | Hardware | R$ 80,00, em estado seminovo |
 | Navegador do operador | Software | Gratuito; dispensa óculos de RA |
 
 ---
@@ -2026,7 +2026,7 @@ Projeto acadêmico desenvolvido na disciplina UPX — Realidade Aumentada do Cen
 ## Checklist de Entrega
 
 - [x] Código-fonte atualizado
-- [ ] README completamente preenchido (itens ⚠️ PREENCHER pendentes)
+- [ ] README completamente preenchido
 - [x] Versões das tecnologias registradas
 - [x] Arquitetura apresentada
 - [x] Funcionamento da RA explicado
