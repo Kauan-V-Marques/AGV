@@ -90,4 +90,6 @@ settings_lock = threading.Lock()
 
 settings = {
     "speed_limit_pct": int(os.environ.get("AGV_SPEED_LIMIT_PCT", "100")),
+    # PWM maximo no modo auto, como o speed_limit_pct (as regras andam a no maximo 170 = 66%)
+    "auto_speed_limit_pct": int(os.environ.get("AGV_AUTO_SPEED_LIMIT_PCT", "40")),
 }

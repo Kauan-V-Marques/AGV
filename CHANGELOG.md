@@ -20,6 +20,7 @@ Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v
 - `scripts/calibrar_lidar.py`: sugere a montagem do RPLIDAR encaixando a faixa do Kinect na volta do laser (recusa resultado fraco ou ambíguo).
 - `scripts/testar_reconexao.sh`: tira e recoloca cada USB com o sistema rodando e mede a recuperação.
 - `AGV_ZED_STREAM_FPS` (10): FPS do stream da câmera traseira, separado do da captura.
+- **Velocidade do modo autônomo:** controle próprio em *Configurações → Condução* (padrão 40%, `AGV_AUTO_SPEED_LIMIT_PCT`), que limita o PWM só no modo auto, somado à velocidade máxima geral. O limite geral quase não pegava no autônomo: as regras andam a no máximo PWM 170 (66%).
 
 ### Corrigido
 
