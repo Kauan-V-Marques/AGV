@@ -585,6 +585,14 @@
               <p class="dica">Limita o PWM dos motores e vale na hora. Reduza antes de manobrar em espaços apertados.</p>
             </div>
             <div class="bloco">
+              <h3>Velocidade do modo autônomo</h3>
+              <div class="controle-deslizante">
+                <input type="range" class="speed-slider" id="auto-speed-limit-slider" min="10" max="100" value="40" step="5" aria-label="Velocidade do modo autônomo">
+                <output id="auto-speed-limit-display" for="auto-speed-limit-slider">40%</output>
+              </div>
+              <p class="dica">Limita o PWM dos motores como a velocidade máxima, mas só no modo autônomo. As regras andam a no máximo 66% do PWM: acima disso o controle não muda nada.</p>
+            </div>
+            <div class="bloco">
               <h3>Limites do modo autônomo</h3>
               <table class="tabela">
                 <thead><tr><th>Zona</th><th>Distância à frente</th><th>O que o AGV faz</th></tr></thead>

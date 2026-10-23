@@ -35,15 +35,15 @@ export function iniciarSom() {
   });
 }
 
-// ── Velocidade maxima ───────────────────────────────────────────────
-export function iniciarVelocidade() {
-  const slider = $("speed-limit-slider");
-  const display = $("speed-limit-display");
+// ── Velocidade maxima (geral) e do modo autonomo ────────────────────
+function iniciarLimite(sliderId, displayId, chave, preferencia, padrao) {
+  const slider = $(sliderId);
+  const display = $(displayId);
   let envio = null;
 
   async function sendSpeedLimit(pct) {
     try {
-      await postJson("/api/settings", { speed_limit_pct: pct });
+      await postJson("/api/settings", { [chave]: pct });
     } catch (error) {
       console.error(error);
       aviso("Não foi possível aplicar o limite de velocidade.", "erro");
@@ -53,13 +53,15 @@ export function iniciarVelocidade() {
   function applySpeedLimit(pct) {
     display.textContent = pct + "%";
     slider.value = pct;
-    slider.style.setProperty("--preenchido", pct + "%");
-    gravarPreferencia("agv_speed_limit", pct);
+    // o preenchimento segue a posicao do cursor, inclusive quando o minimo nao e 0
+    const posicao = ((slider.value - slider.min) / (slider.max - slider.min)) * 100;
+    slider.style.setProperty("--preenchido", posicao + "%");
+    gravarPreferencia(preferencia, slider.value);
   }
 
-  const salvo = parseInt(lerPreferencia("agv_speed_limit", "100"), 10);
-  applySpeedLimit(isNaN(salvo) ? 100 : salvo);
-  sendSpeedLimit(slider.value);
+  const salvo = parseInt(lerPreferencia(preferencia, String(padrao)), 10);
+  applySpeedLimit(isNaN(salvo) ? padrao : salvo);
+  sendSpeedLimit(Number(slider.value));
 
   slider.addEventListener("input", () => {
     const pct = parseInt(slider.value, 10);
@@ -67,6 +69,11 @@ export function iniciarVelocidade() {
     clearTimeout(envio);
     envio = setTimeout(() => sendSpeedLimit(pct), 300);
   });
+}
+
+export function iniciarVelocidade() {
+  iniciarLimite("speed-limit-slider", "speed-limit-display", "speed_limit_pct", "agv_speed_limit", 100);
+  iniciarLimite("auto-speed-limit-slider", "auto-speed-limit-display", "auto_speed_limit_pct", "agv_auto_speed_limit", 40);
 }
 
 // ── Link para outro dispositivo ─────────────────────────────────────

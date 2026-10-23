@@ -257,6 +257,14 @@ class TestConfiguracoes(_Base):
         self.assertEqual(self._limite(150).get_json()["settings"]["speed_limit_pct"], 100)
         self.assertEqual(self._limite(-5).get_json()["settings"]["speed_limit_pct"], 0)
 
+    def test_limite_do_autonomo_e_separado(self):
+        self._limite(80)
+        resposta = self.client.post("/api/settings", json={"auto_speed_limit_pct": 140})
+        settings = resposta.get_json()["settings"]
+        self.assertEqual((settings["speed_limit_pct"], settings["auto_speed_limit_pct"]), (80, 100))
+        resposta = self.client.post("/api/settings", json={"auto_speed_limit_pct": "x"})
+        self.assertEqual(resposta.status_code, 400)
+
     def test_limite_invalido(self):
         resposta = self._limite("abc")
         self.assertEqual(resposta.status_code, 400)

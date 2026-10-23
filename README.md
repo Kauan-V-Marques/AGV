@@ -878,6 +878,7 @@ cp agv.env.exemplo agv.env                                  # configuração loc
 | `AGV_VIDEO_FPS` / `AGV_DEPTH_FPS` | `6` / `4` | FPS dos streams |
 | `AGV_WATCHDOG_TIMEOUT_S` | `2.0` | Tempo sem comando manual até parar (`0` desativa) |
 | `AGV_SPEED_LIMIT_PCT` | `100` | Limite inicial de velocidade |
+| `AGV_AUTO_SPEED_LIMIT_PCT` | `40` | Limite inicial de velocidade (PWM) do modo autônomo |
 | `AGV_KINECT_STABILIZATION` | `1` | Estabilização do tilt |
 | `AGV_ZED_DEVICE` | `/dev/video0` | Dispositivo da câmera ZED |
 | `AGV_MAX_UPLOAD_MB` | `10` | Tamanho máximo da foto no cadastro de rosto (acima disso: erro 413) |

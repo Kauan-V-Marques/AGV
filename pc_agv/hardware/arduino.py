@@ -341,8 +341,12 @@ def send_to_arduino(speed: int, steering: int, mode: str, source: str, conectar:
 
     # Speed limit: escala linear em 0-255 para que o usuario sinta diferenca real.
     # A 50% o PWM maximo e 127 (visivelmente mais lento que 255).
+    # O modo auto tem um limite proprio, aplicado aqui no PWM: as velocidades das regras
+    # (18 a 48%) sobem todas para MIN_FORWARD_PWM, entao reduzi-las antes nao mudava nada.
     with estado.settings_lock:
         limit_pct = estado.settings["speed_limit_pct"]
+        if mode == "auto":
+            limit_pct = min(limit_pct, estado.settings["auto_speed_limit_pct"])
     if limit_pct < 100 and accel != 0:
         max_pwm = int(255 * limit_pct / 100)
         accel = max(-max_pwm, min(max_pwm, accel))

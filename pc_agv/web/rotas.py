@@ -236,13 +236,15 @@ def route_control():
 def route_settings():
     if request.method == "POST":
         payload = request.get_json(silent=True) or {}
-        if "speed_limit_pct" in payload:
+        for chave in ("speed_limit_pct", "auto_speed_limit_pct"):
+            if chave not in payload:
+                continue
             try:
-                pct = max(0, min(100, int(payload["speed_limit_pct"])))
+                pct = max(0, min(100, int(payload[chave])))
             except Exception:
-                return jsonify({"ok": False, "error": "invalid speed_limit_pct"}), 400
+                return jsonify({"ok": False, "error": f"invalid {chave}"}), 400
             with estado.settings_lock:
-                estado.settings["speed_limit_pct"] = pct
+                estado.settings[chave] = pct
     with estado.settings_lock:
         return jsonify({"ok": True, "settings": dict(estado.settings)})
 

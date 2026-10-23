@@ -29,12 +29,13 @@ class TestProtocoloDoArduino(unittest.TestCase):
 
 
 class TestEnvioPelaSerial(unittest.TestCase):
-    def _enviar(self, speed, steering, serial=None, limite=100, habilitado=True):
+    def _enviar(self, speed, steering, serial=None, limite=100, habilitado=True, modo="manual", limite_auto=100):
         with arduino_isolado(), estado_isolado():
             arduino._arduino_state["enabled"] = habilitado
             estado.settings["speed_limit_pct"] = limite
+            estado.settings["auto_speed_limit_pct"] = limite_auto
             arduino._arduino_serial = serial
-            ok = arduino.send_to_arduino(speed, steering, "manual", "teste")
+            ok = arduino.send_to_arduino(speed, steering, modo, "teste")
             return ok, dict(arduino._arduino_state), arduino._arduino_serial
 
     def test_serial_desativada_nao_envia(self):
@@ -49,6 +50,15 @@ class TestEnvioPelaSerial(unittest.TestCase):
         self.assertEqual(serial.escrito, [b"255,0\n"])
         self.assertEqual(final["last_command"], "255,0")
         self.assertTrue(final["connected"])
+
+    def test_limite_do_autonomo_reduz_o_pwm_so_no_auto(self):
+        serial = SerialFalsa()
+        # 48% sobe para o PWM minimo (170); o limite do auto precisa cortar depois disso
+        self._enviar(48, 0, serial=serial, modo="auto", limite_auto=40)
+        self._enviar(-25, 0, serial=serial, modo="auto", limite_auto=40)
+        self._enviar(48, 0, serial=serial, modo="manual", limite_auto=40)
+        self._enviar(48, 0, serial=serial, modo="auto", limite=30, limite_auto=40)
+        self.assertEqual(serial.escrito, [b"102,0\n", b"-102,0\n", b"170,0\n", b"76,0\n"])
 
     def test_limite_de_velocidade_reduz_o_pwm(self):
         serial = SerialFalsa()
