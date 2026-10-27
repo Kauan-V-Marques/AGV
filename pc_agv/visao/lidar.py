@@ -7,6 +7,10 @@ sentido horario visto de cima, com o 0 grau dele onde a montagem deixar.
 As folgas sao medidas a partir da borda do chassi (um retangulo de largura x
 comprimento), nao do centro do laser: "frente 0,30 m" quer dizer que ha 30 cm
 entre o para-choque e o obstaculo, na mesma ideia das distancias do Kinect.
+
+Mais perto que o alcance minimo (~0,15 m) o laser nao mede: a amostra volta sem
+eco, igual a quando nao ha nada. Sem leitura nao quer dizer livre; perto_demais
+acha esses buracos na volta e devolve onde provavelmente ha algo encostado.
 """
 
 import math
@@ -35,6 +39,10 @@ MONTAGEM_PADRAO = Montagem()
 CORPO_PADRAO = Corpo()
 
 SETORES = ("frente", "frente_esq", "esquerda", "tras_esq", "tras", "tras_dir", "direita", "frente_dir")
+
+CEGO_MIN_GRAUS = 8.0     # buraco mais estreito que isso (entre as leituras dos lados) e falha do laser
+CEGO_LARGO_GRAUS = 30.0  # buraco a partir disso conta sempre (caixa de 10 cm encostada no laser: ~50 graus)
+PERTO_M = 0.40           # leitura ate essa distancia do laser, na beira do buraco: o objeto continua ali
 
 
 def ler_mascara(texto: str) -> tuple:
@@ -86,6 +94,69 @@ def para_agv(angulos_graus, distancias_m, montagem: Montagem = MONTAGEM_PADRAO) 
     rad = np.radians(graus_agv)
     pontos = np.stack([montagem.x_m + distancias * np.cos(rad), montagem.y_m + distancias * np.sin(rad)], axis=1)
     return pontos, np.arctan2(np.sin(rad), np.cos(rad))
+
+
+def _graus_perto(pontos, montagem: Montagem) -> np.ndarray:
+    """Angulos (graus do AGV, vistos do laser) dos pontos a ate PERTO_M dele."""
+    if pontos is None or not len(pontos):
+        return np.empty(0)
+    rel = np.asarray(pontos, dtype=np.float64).reshape(-1, 2) - (montagem.x_m, montagem.y_m)
+    perto = np.hypot(rel[:, 0], rel[:, 1]) <= PERTO_M
+    return np.degrees(np.arctan2(rel[perto, 1], rel[perto, 0])) % 360.0
+
+
+def perto_demais(angulos_graus, distancias_m, montagem: Montagem = MONTAGEM_PADRAO, antes=None) -> np.ndarray:
+    """Pontos (N, 2) no referencial do AGV onde provavelmente ha algo mais perto que min_m do laser.
+
+    Recebe a volta inteira, inclusive as amostras sem eco (distancia 0). Abaixo do alcance
+    minimo o RPLIDAR nao mede (sem eco ou um valor abaixo do minimo) e para_agv descarta a
+    amostra: sem isto, um obstaculo encostado no laser deixa o setor vazio e ele parece livre.
+    Um buraco na volta (amostras seguidas sem leitura, de pelo menos CEGO_MIN_GRAUS entre as
+    leituras dos dois lados) conta como obstaculo quando:
+      - tem CEGO_LARGO_GRAUS ou mais: um objeto pequeno inteiro dentro do minimo (uma caixa
+        encostada no laser) deixa um buraco largo, com o fundo longe dos dois lados;
+      - uma das leituras na beira dele esta a ate PERTO_M: o objeto continua alem do minimo;
+      - alguma amostra dele mediu abaixo do minimo; ou
+      - a volta anterior tinha algo a ate PERTO_M ali (antes: os pontos dela, inclusive os
+        devolvidos aqui): o objeto chegou perto e entrou na zona cega.
+    Um buraco estreito longe de tudo (fim de corredor comprido, falha do laser) continua sem
+    ponto; um largo (vidro, superficie preta, porta para um salao) vira obstaculo, que e o
+    lado seguro do erro. Volta inteira sem leitura (laser tapado) conta toda. Cada ponto fica
+    a min_m do laser, na direcao da amostra.
+    """
+    graus = (montagem.frente_graus - np.asarray(angulos_graus, dtype=np.float64)) % 360.0
+    distancias = np.asarray(distancias_m, dtype=np.float64)
+    ordem = np.argsort(graus, kind="stable")
+    graus, distancias = graus[ordem], distancias[ordem]
+    mascarado = np.zeros(graus.shape, dtype=bool)
+    for inicio, fim in montagem.mascara:
+        mascarado |= _dentro_da_faixa(graus, inicio, fim)
+    medido = np.isfinite(distancias) & (distancias >= montagem.min_m) & ~mascarado
+    cego = ~medido & ~mascarado
+    if medido.any() and cego.any():
+        cego = _buracos_perto(graus, distancias, medido, cego, _graus_perto(antes, montagem))
+    rad = np.radians(graus[cego])
+    return np.stack([montagem.x_m + montagem.min_m * np.cos(rad), montagem.y_m + montagem.min_m * np.sin(rad)], axis=1)
+
+
+def _buracos_perto(graus, distancias, medido, cego, graus_antes) -> np.ndarray:
+    """Das amostras sem leitura (cego), as que estao num buraco que conta como obstaculo."""
+    # Comeca numa amostra que nao e buraco: nenhum buraco fica partido no 0 grau.
+    desloc = int(np.flatnonzero(~cego)[0])
+    graus, distancias, medido, cego = (np.roll(v, -desloc) for v in (graus, distancias, medido, cego))
+    perto = medido & (distancias <= PERTO_M)
+    curto = cego & np.isfinite(distancias) & (distancias > 0)
+    borda = np.diff(np.concatenate([[0], cego.astype(np.int8), [0]]))
+    conta = np.zeros_like(cego)
+    for inicio, fim in zip(np.flatnonzero(borda == 1), np.flatnonzero(borda == -1)):
+        de, ate = inicio - 1, fim % len(graus)  # leituras dos dois lados do buraco [inicio, fim)
+        largura = (graus[ate] - graus[de]) % 360.0 if de != ate else 360.0
+        if largura < CEGO_MIN_GRAUS:
+            continue
+        if (largura >= CEGO_LARGO_GRAUS or perto[de] or perto[ate] or curto[inicio:fim].any()
+                or _dentro_da_faixa(graus_antes, graus[de], graus[ate]).any()):
+            conta[inicio:fim] = True
+    return np.roll(conta, desloc)
 
 
 def espaco_de_giro(pontos: np.ndarray, corpo: Corpo = CORPO_PADRAO) -> Optional[float]:

@@ -216,10 +216,10 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | RF37 | Registro do experimento | Gravar tempo, colisões, intervenções, RTT e FPS de cada sessão, com as paradas por falha técnica (perda de vídeo, watchdog, queda de comunicação) registradas à parte | ⬜ |
 | RF38 | Alternância de condição | Ligar/desligar as sobreposições para comparar HUD × HUD + RA, com o mesmo processamento no servidor nas duas condições | ⬜ |
 | RF39 | Aviso de zona não medida | Quando a região à frente não tiver leitura válida (abaixo do alcance mínimo do Kinect), mostrar um aviso no vídeo em vez de omitir a informação | ⬜ |
-| RF40 | RPLIDAR 360° | Driver serial próprio (protocolo Slamtec, sem SDK) para A1/A2/A3: liga o motor, lê as voltas, converte para o referencial do AGV e calcula a folga até a borda do chassi em 8 setores (frente, diagonais, lados e traseira) | ✅ |
+| RF40 | RPLIDAR 360° | Driver serial próprio (protocolo Slamtec, sem SDK) para A1/A2/A3: liga o motor, lê as voltas, converte para o referencial do AGV e calcula a folga até a borda do chassi em 8 setores (frente, diagonais, lados e traseira); o que está perto demais para o laser medir (abaixo de 0,15 m) conta como obstáculo, não como caminho livre | ✅ |
 | RF41 | Fusão Kinect + LIDAR | Autônomo e IA usam a menor das duas leituras à frente (o laser cobre a zona cega do Kinect); o autônomo não gira para o lado em que o chassi está encostado e dá ré quando a frente e as diagonais fecham e a traseira está livre; a IA não dá ré com obstáculo atrás | ✅ |
 | RF42 | Mapa com LIDAR | Com o laser online, a odometria casa as voltas de 360° e o mapa recebe o laser e o Kinect, cada um da sua posição no AGV; sem o laser, volta a usar só o Kinect | ✅ |
-| RF43 | Radar 360° | Pontos do laser em volta do AGV e as 8 folgas, na página *Telemetria* e no HUD; indicador LIDAR na barra superior | ✅ |
+| RF43 | Radar 360° | Pontos do laser em volta do AGV e as 8 folgas, na página *Telemetria* e no HUD (um **x** vermelho onde há algo perto demais para o laser medir); indicador LIDAR na barra superior | ✅ |
 | RF44 | Webcam no lugar da ZED | Sem ZED conectada, a câmera traseira e o reconhecimento facial usam qualquer outra webcam (ex.: a integrada do notebook), nunca o Kinect; o vídeo dela também aparece no HUD | ✅ |
 
 **Legenda:** ✅ Implementado · 🚧 Em desenvolvimento · ⬜ Planejado · ❌ Cancelado
@@ -574,7 +574,7 @@ AGV/
 | `pc_agv/hardware/zed.py` | Descoberta da ZED (ou de outra webcam, nunca o Kinect) e `capture_loop` (OpenCV V4L2 ou FFmpeg) |
 | `pc_agv/hardware/rplidar.py` | `comando`, `decodificar` (amostras de 5 bytes com realinhamento), `lidar_loop` (abre, liga o motor, lê as voltas, reconecta), `leitura_recente` (volta com menos de 0,6 s) e `porta_reservada` (o Arduino nunca abre a porta do laser) |
 | `pc_agv/hardware/arduino.py` | Conexão serial, `speed_steering_to_payload` (−100..100 → `aceleração,direção`), `send_to_arduino` com limite de velocidade e estado do link |
-| `pc_agv/visao/lidar.py` | Funções puras: `para_agv` (ângulo horário do laser → referencial do AGV, alcance e máscara) e `folgas` (distância da borda do chassi ao obstáculo mais próximo em 8 setores) |
+| `pc_agv/visao/lidar.py` | Funções puras: `para_agv` (ângulo horário do laser → referencial do AGV, alcance e máscara), `perto_demais` (buracos sem eco na volta que são algo perto demais para o laser medir) e `folgas` (distância da borda do chassi ao obstáculo mais próximo em 8 setores) |
 | `pc_agv/visao/profundidade.py` | Funções puras: `depth_segment_distance`, `compute_depth_metrics` e `depth_to_colormap` |
 | `pc_agv/visao/rostos.py` | Banco de rostos, `face_worker_loop`, `offer_frame` (marcação sobre o vídeo da ZED) e `register_face` |
 | `pc_agv/web/rotas.py` | Aplicação Flask: painel e API REST; as rotas só traduzem HTTP e chamam os módulos |
@@ -897,7 +897,7 @@ cp agv.env.exemplo agv.env                                  # configuração loc
 | `AGV_LIDAR_MOTOR_PWM` | `660` | Rotação nos modelos com PWM (0–1023): mais lento = mais pontos por volta |
 | `AGV_LIDAR_FRENTE_GRAUS` | `0` | Ângulo do laser (sentido horário, como ele mede) que aponta para a frente do AGV |
 | `AGV_LIDAR_X_M` / `AGV_LIDAR_Y_M` | `0` / `0` | Posição do laser em relação ao eixo das rodas (x para a frente, y para a esquerda) |
-| `AGV_LIDAR_MIN_M` / `AGV_LIDAR_MAX_M` | `0.15` / `8.0` | Leituras fora dessa faixa são descartadas (perto demais = o próprio chassi) |
+| `AGV_LIDAR_MIN_M` / `AGV_LIDAR_MAX_M` | `0.15` / `8.0` | Leituras fora dessa faixa não entram no mapa. Abaixo do mínimo o laser não mede: o buraco que o obstáculo deixa na volta conta como algo a essa distância do laser (dentro do chassi é o próprio AGV e é ignorado) |
 | `AGV_LIDAR_MASCARA` | vazio | Faixas de ângulo do AGV a ignorar, ex.: `170:190,85:95` (colunas que ficam na frente do laser) |
 | `AGV_FRENTE_M` / `AGV_TRASEIRA_M` / `AGV_LARGURA_M` | `0.30` / `0.30` / `0.50` | Chassi em volta do eixo das rodas: as folgas do laser são medidas da borda |
 | `AGV_ZED_WEBCAM_GENERICA` | `1` | Sem ZED, usa outra webcam como câmera traseira (`0` = só ZED) |
@@ -1080,6 +1080,8 @@ A parada de emergência no modo IA também marca a última ação da IA com pena
 | Traseira | — | corredor atrás e cantos traseiros |
 
 Com o LIDAR, o autônomo também confere o **espaço de giro**: girando no lugar (ou na curva fechada do firmware), os cantos do chassi descrevem um círculo de cerca de 0,39 m de raio em volta do eixo, e o laser diz se há algo dentro dele (com 6 cm de sobra).
+
+**Perto demais para o laser:** abaixo de ~0,15 m o RPLIDAR não mede, e a amostra volta sem eco, igual a quando não há nada. Com o laser na quina da frente (em cima do Kinect), um obstáculo a poucos centímetros do para-choque está nessa faixa e, antes, o setor ficava vazio e aparecia como livre. Agora `perto_demais` (em `visao/lidar.py`) procura buracos na volta (amostras seguidas sem eco, com pelo menos 8° entre as leituras dos dois lados) e conta o buraco como obstáculo a 0,15 m do laser quando ele tem 30° ou mais, quando encosta numa leitura a até 0,40 m, quando alguma amostra dele mediu abaixo do mínimo ou quando, na volta anterior, havia algo perto ali (o objeto chegou perto e sumiu). Esses pontos entram nas folgas e no espaço de giro, mas não no mapa. Um buraco estreito e longe de tudo (fim de corredor comprido) continua livre; com o laser tapado (volta inteira sem eco), todos os setores ficam em 0 e o autônomo para.
 
 ```mermaid
 flowchart TD
@@ -1459,10 +1461,10 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `test_depth_metrics.py` | Distância pelo ponto mais próximo, fundo distante, leituras inválidas, formato em mm e desvio no autônomo | 6 |
 | `test_kinect_release.py` | Liberação dos módulos do kernel, reconexão, tilt e estabilização | 9 |
 | `test_telemetria_mjpeg_runtime.py` / `test_servidor.py` | `/api/status`, quadros MJPEG, start/stop das oito threads e servidor HTTP real numa porta livre | 8 |
-| `test_simulacao.py` | **AGV virtual em malha fechada** (seção 22.5): armazém sem colisões, saída de beco sem saída, caixa na zona cega do Kinect, mapa com o laser dirigindo pelo autônomo, colisão do chassi e modelo do firmware | 6 |
-| `test_lidar.py` | Protocolo do RPLIDAR (comandos, amostras, realinhamento depois de lixo, ângulo impossível), abertura com serial falsa (motor, saúde com erro, sem resposta), referencial do AGV, máscara, folgas pela borda do chassi, thread publicando voltas, **autônomo com LIDAR** (zona cega do Kinect, lado encostado, ré quando encurralado, parede lateral), espaço de giro (recua até ter espaço, para sem saída, corredor estreito reto), ré da IA bloqueada e IA sem curva sem espaço, **mapa com o laser numa sala simulada**, **calibração da montagem** (recupera ângulo e posição; recusa parede reta), Arduino ignorando a porta do laser e as `ttyS`, webcam genérica, `agv.env` e `/api/lidar` | 47 |
+| `test_simulacao.py` | **AGV virtual em malha fechada** (seção 22.5): armazém sem colisões, saída de beco sem saída, caixa na zona cega do Kinect, caixa encostada no laser da quina (sem a correção, bate), mapa com o laser dirigindo pelo autônomo, colisão do chassi e modelo do firmware | 7 |
+| `test_lidar.py` | Protocolo do RPLIDAR (comandos, amostras, realinhamento depois de lixo, ângulo impossível), abertura com serial falsa (motor, saúde com erro, sem resposta), referencial do AGV, máscara, folgas pela borda do chassi, thread publicando voltas (inclusive as amostras sem eco), **perto demais para o laser** (buraco largo, na beira de algo perto, leitura abaixo do mínimo, objeto que chegou perto, buraco no 0°, falha isolada e fim de corredor que continuam livres, laser tapado, caixa encostada no laser da quina), **autônomo com LIDAR** (zona cega do Kinect, lado encostado, ré quando encurralado, parede lateral), espaço de giro (recua até ter espaço, para sem saída, corredor estreito reto), ré da IA bloqueada e IA sem curva sem espaço, **mapa com o laser numa sala simulada**, **calibração da montagem** (recupera ângulo e posição; recusa parede reta), Arduino ignorando a porta do laser e as `ttyS`, webcam genérica, `agv.env` e `/api/lidar` | 60 |
 
-**Resumo:** 285 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV), em cerca de 20 s. Cobertura do pacote `pc_agv`: **90%**.
+**Resumo:** 301 testes, todos aprovados (Windows 10 / Python 3.11.9, Ubuntu 24.04 no CI e Ubuntu 22.04 / Python 3.10.12 no notebook do AGV), em cerca de 20 s. Cobertura do pacote `pc_agv`: **90%**.
 
 | Módulo | Cobertura | Módulo | Cobertura |
 |---|---|---|---|
@@ -1472,7 +1474,7 @@ Rodam com `python -m unittest discover -s tests -v`, sem nenhum hardware: a seri
 | `web/rotas.py` | 93% | `hardware/arduino.py` | 87% |
 | `visao/rostos.py` | 89% | `hardware/kinect.py` | 77% |
 | `sqlite_util.py` | 87% | `hardware/zed.py` | 62% |
-| `visao/lidar.py` | 97% | `hardware/rplidar.py` | 78% |
+| `visao/lidar.py` | 98% | `hardware/rplidar.py` | 86% |
 | `mapeamento/calibracao.py` | 97% | | |
 | | | **Total** | **90%** |
 
@@ -1550,7 +1552,7 @@ Tempo de processamento: 16–38 ms por quadro em média (Windows 10, Python 3.11
 
 ### 22.5 AGV virtual (simulação em malha fechada)
 
-Sem os motores, o movimento foi testado num **AGV virtual** ([`tests/simulador_agv.py`](tests/simulador_agv.py)) que usa o código real do servidor (regras do autônomo, IA, camada de segurança, mapa e a conversão de comando para o Arduino) e simula só o que é físico: o Kinect em 11 bits com a zona cega abaixo de 0,5 m, o RPLIDAR com ~13 voltas/s e ~120 pontos por volta, o firmware `sketch_may13a` (filtro de 3 amostras, zona morta de ±30, potência de cada roda, anti-reversão, timeout) e a tração diferencial, com colisão do retângulo do chassi (60 × 50 cm, estimado) contra as paredes. Cenários: um armazém de 8 × 6 m com duas prateleiras, um palete e caixas (corredores de ~1 m) e um beco sem saída de 0,9 m.
+Sem os motores, o movimento foi testado num **AGV virtual** ([`tests/simulador_agv.py`](tests/simulador_agv.py)) que usa o código real do servidor (regras do autônomo, IA, camada de segurança, mapa e a conversão de comando para o Arduino) e simula só o que é físico: o Kinect em 11 bits com a zona cega abaixo de 0,5 m, o RPLIDAR com ~13 voltas/s, ~120 pontos por volta e sem eco abaixo de 0,15 m, o firmware `sketch_may13a` (filtro de 3 amostras, zona morta de ±30, potência de cada roda, anti-reversão, timeout) e a tração diferencial, com colisão do retângulo do chassi (60 × 50 cm, estimado) contra as paredes. Cenários: um armazém de 8 × 6 m com duas prateleiras, um palete e caixas (corredores de ~1 m) e um beco sem saída de 0,9 m.
 
 **Autônomo** (colisões; cada uma conta uma vez por segundo de contato):
 

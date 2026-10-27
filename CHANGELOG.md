@@ -24,6 +24,7 @@ Todas as mudanças relevantes do projeto. Cada versão tem uma tag no GitHub (`v
 
 ### Corrigido
 
+- **Obstáculo encostado no RPLIDAR aparecia como caminho livre:** abaixo de ~0,15 m o laser não mede (a amostra volta sem eco), e a amostra era descartada; com o laser na quina da frente, uma caixa a 5 cm do para-choque deixava a frente "livre" (no AGV virtual, ele batia). Agora as amostras sem eco ficam na volta e `perto_demais` conta como obstáculo o buraco que o objeto deixa (largo, na beira de algo perto, com leitura abaixo do mínimo ou onde havia algo perto na volta anterior); esses pontos entram nas folgas e no espaço de giro, não no mapa, e aparecem como **x** vermelho no radar. Laser tapado: nenhum setor é livre.
 - **Mapa com LIDAR em movimento** perdia a posição (26% de erro do caminho): a normal das paredes exigia vizinhos a menos de 15 cm, e o laser tem um ponto a cada ~3°. Agora o limite acompanha o espaçamento: 0,3% a 0,6%.
 - **Autônomo** batia girando perto de parede e não saía de beco: com o LIDAR só gira com espaço para os cantos do chassi, recua em linha reta até ter espaço, e a ré depende só do corredor atrás; rente a uma parede segue reto.
 - **IA** batia dando ré e virando: sem espaço de giro, a segurança zera a direção.

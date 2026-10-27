@@ -33,7 +33,8 @@ def _menor(*valores):
 
 
 def _lidar_ou_livre(folgas: dict, setor: str) -> float:
-    # O LIDAR ve 360 graus: setor sem ponto nenhum esta livre ate o alcance maximo.
+    # O LIDAR ve 360 graus: setor sem ponto nenhum esta livre ate o alcance maximo. As folgas
+    # ja contam o que esta perto demais para o laser medir (rplidar.publicar).
     valor = folgas.get(setor)
     return LIDAR_MAX_M if valor is None else float(valor)
 
@@ -52,7 +53,8 @@ def compute_autopilot_command() -> tuple[int, int, str]:
 
     O Kinect ve a frente em 3D (inclusive o que esta acima ou abaixo do plano do laser),
     mas nao mede abaixo de ~0,5 m. O RPLIDAR ve 360 graus num plano, de 0,15 m em
-    diante: cobre a zona cega do Kinect, as laterais e a traseira. A frente e as
+    diante (mais perto, o buraco que o obstaculo deixa na volta conta como obstaculo):
+    cobre a zona cega do Kinect, as laterais e a traseira. A frente e as
     diagonais usam a menor das duas leituras; os lados e a traseira, so o LIDAR.
     Sem LIDAR (ou com a volta velha) as regras sao as do Kinect sozinho.
     """
@@ -82,7 +84,7 @@ def compute_autopilot_command() -> tuple[int, int, str]:
         # Re em linha reta: so o corredor da largura do AGV atras importa (as paredes
         # laterais de um corredor aparecem nas diagonais traseiras e nao atrapalham).
         tras = _lidar_ou_livre(folgas, "tras")
-        pode_girar = rplidar.pode_girar(leitura["pontos"])
+        pode_girar = rplidar.pode_girar(leitura["obstaculos"])
 
     center_distance = center if center is not None else distance
     if center_distance is None:
