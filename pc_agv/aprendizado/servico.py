@@ -163,7 +163,7 @@ def decidir(agora: Optional[float] = None) -> tuple[int, int, str]:
         # so o corredor atras: num corredor as paredes laterais aparecem nas diagonais
         tras = folgas.get("tras")
         tras = LIDAR_MAX_M if tras is None else tras
-        pode_girar = rplidar.pode_girar(leitura["pontos"])
+        pode_girar = rplidar.pode_girar(leitura["obstaculos"])
     return politica.aplicar_seguranca(int(round(velocidade)), int(round(direcao)), frente, velocidade_max, motivo,
                                       tras_m=tras, pode_girar=pode_girar)
 

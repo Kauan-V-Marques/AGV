@@ -6,13 +6,17 @@ import types
 import unittest
 from unittest.mock import patch
 
+import numpy as np
+
 from apoio import estado_isolado, mapeamento_isolado
 
 import simulador_agv as sim
 from simulador_agv import Pose, Simulacao, armazem, beco, colide
+from simulador_kinect import caixa
 
 from pc_agv import estado
 from pc_agv.hardware import rplidar
+from pc_agv.visao import lidar as geometria
 from pc_agv.mapeamento import servico as mapa
 from pc_agv.mapeamento.geometria import angulo_normalizado, compor, inverter
 
@@ -59,6 +63,18 @@ class TestAutonomoSimulado(unittest.TestCase):
         # A caixa esta a 0,25 m do Kinect (abaixo do alcance dele); o LIDAR a ve.
         r = _rodar(armazem(), Pose(1.2, 2.25, math.pi), 10.0, semente=1)
         self.assertEqual(r.colisoes, 0, r.eventos)
+
+    def test_caixa_encostada_no_laser_da_quina(self):
+        # Laser na quina dianteira, como no AGV real, e uma caixa a 5 cm do para-choque: abaixo
+        # do alcance do laser (0,15 m) e do Kinect (0,5 m). Contando o buraco que ela deixa na
+        # volta, o AGV nao avanca; sem isso a frente saia "livre" e ele batia.
+        segmentos = np.array(armazem().tolist() + caixa(0.35, 0.05, 0.55, 0.25))
+        r = _rodar(segmentos, Pose(0.0, 0.0, 0.0), 10.0, semente=1, lidar_xy=sim.LIDAR_QUINA_XY)
+        self.assertEqual(r.colisoes, 0, r.eventos)
+        self.assertNotEqual(next(iter(r.motivos)), "livre")  # depois de sair dali, sim
+        with patch.object(geometria, "perto_demais", return_value=np.empty((0, 2))):
+            sem_zona_cega = _rodar(segmentos, Pose(0.0, 0.0, 0.0), 10.0, semente=1, lidar_xy=sim.LIDAR_QUINA_XY)
+        self.assertGreater(sem_zona_cega.colisoes, 0)
 
 
 class TestMapaSimulado(unittest.TestCase):

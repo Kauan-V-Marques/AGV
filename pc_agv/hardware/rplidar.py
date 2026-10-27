@@ -13,7 +13,9 @@ O motor do A1 liga pelo DTR do adaptador USB (DTR baixo = girando); o A2/A3 pelo
 comando de PWM. Os dois sao enviados, entao o mesmo codigo serve aos tres.
 
 A thread agv-lidar junta as amostras de cada volta completa e publica em
-estado.lidar_state os pontos no referencial do AGV e as folgas por setor.
+estado.lidar_state os pontos no referencial do AGV e as folgas por setor. As
+amostras sem eco tambem entram na volta: e por elas que se ve o que esta perto
+demais para o laser medir (geometria.perto_demais).
 """
 
 import os
@@ -54,7 +56,7 @@ CMD_PWM = 0xF0
 
 PORTA_UDEV = "/dev/rplidar"            # regra scripts/99-agv-serial.rules
 USB_CP210X = (0x10C4, 0xEA60)          # adaptador USB-serial que acompanha o RPLIDAR
-MIN_PONTOS_VOLTA = 20                  # volta com menos pontos que isso e descartada
+MIN_PONTOS_VOLTA = 20                  # volta com menos amostras que isso (com ou sem eco) e descartada
 MAX_AMOSTRAS_VOLTA = 4000              # sem marca de inicio de volta: publica assim mesmo
 SEM_DADOS_S = 2.0                      # sem bytes por mais que isso: reconecta
 GIRO_INICIAL_S = 1.0                   # o motor precisa estabilizar antes da varredura
@@ -249,12 +251,29 @@ def _fechar(ser, comandos: bool = True) -> None:
 
 
 # ── Publicacao ──────────────────────────────────────────────────────
+def _obstaculos(pontos, cegos) -> np.ndarray:
+    """O que conta para a seguranca: o que o laser mediu e o que esta perto demais para ele."""
+    if cegos is None or not len(cegos):
+        return pontos
+    return np.concatenate([pontos, cegos])
+
+
 def publicar(angulos: list, distancias: list, agora: float, hz: float) -> None:
+    """Uma volta completa: todas as amostras, inclusive as sem eco (distancia 0)."""
     pontos, _ = geometria.para_agv(angulos, distancias, MONTAGEM)
-    folgas = geometria.folgas(pontos, CORPO)
+    with estado.lidar_lock:
+        anterior = None
+        if estado.lidar_state["ok"] and agora - float(estado.lidar_state["at"]) <= LIDAR_VELHO_S:
+            anterior = _obstaculos(estado.lidar_state["pontos"], estado.lidar_state["cegos"])
+    cegos = geometria.perto_demais(angulos, distancias, MONTAGEM, anterior)
+    folgas = geometria.folgas(_obstaculos(pontos, cegos), CORPO)
+    medidas = np.asarray(distancias, dtype=np.float64)
+    if medidas.size and not np.any(medidas >= MONTAGEM.min_m):
+        # Nada medido na volta inteira (laser tapado ou encostado em algo): nenhum lado e livre.
+        folgas = dict.fromkeys(geometria.SETORES, 0.0)
     with estado.lidar_lock:
         estado.lidar_state.update(
-            ok=True, erro=None, at=agora, hz=round(hz, 1), pontos=pontos, folgas=folgas,
+            ok=True, erro=None, at=agora, hz=round(hz, 1), pontos=pontos, cegos=cegos, folgas=folgas,
             voltas=estado.lidar_state["voltas"] + 1,
         )
 
@@ -269,7 +288,10 @@ def pode_girar(pontos) -> bool:
 
 
 def leitura_recente(agora: Optional[float] = None) -> Optional[dict]:
-    """Pontos e folgas da ultima volta, ou None se o LIDAR esta fora ou a volta e velha."""
+    """Pontos e folgas da ultima volta, ou None se o LIDAR esta fora ou a volta e velha.
+
+    pontos: so o que o laser mediu (o mapa usa); obstaculos: esses mais os de perto demais
+    para ele medir (a seguranca usa)."""
     agora = util.now() if agora is None else agora
     with estado.lidar_lock:
         if not estado.lidar_state["ok"] or estado.lidar_state["pontos"] is None:
@@ -278,6 +300,7 @@ def leitura_recente(agora: Optional[float] = None) -> Optional[dict]:
             return None
         return {
             "pontos": estado.lidar_state["pontos"],
+            "obstaculos": _obstaculos(estado.lidar_state["pontos"], estado.lidar_state["cegos"]),
             "folgas": dict(estado.lidar_state["folgas"]),
             "at": float(estado.lidar_state["at"]),
         }
@@ -287,6 +310,7 @@ def status_snapshot() -> dict:
     with estado.lidar_lock:
         at = float(estado.lidar_state["at"])
         pontos = estado.lidar_state["pontos"]
+        cegos = estado.lidar_state["cegos"]
         return {
             "habilitado": LIDAR_ENABLED,
             "online": bool(estado.lidar_state["ok"]),
@@ -296,6 +320,7 @@ def status_snapshot() -> dict:
             "hz": estado.lidar_state["hz"],
             "voltas": estado.lidar_state["voltas"],
             "pontos": 0 if pontos is None else int(len(pontos)),
+            "cegos": 0 if cegos is None else int(len(cegos)),
             "idade_s": None if at <= 0 else round(util.now() - at, 2),
             "folgas": dict(estado.lidar_state["folgas"]),
         }
@@ -306,6 +331,7 @@ def varredura_publica(max_pontos: int = 400) -> dict:
     resumo = status_snapshot()
     with estado.lidar_lock:
         pontos = estado.lidar_state["pontos"]
+        cegos = estado.lidar_state["cegos"]
     lista = []
     if pontos is not None and len(pontos):
         passo = max(1, int(np.ceil(len(pontos) / max(1, max_pontos))))
@@ -313,6 +339,7 @@ def varredura_publica(max_pontos: int = 400) -> dict:
     return {
         **resumo,
         "lista": lista,
+        "lista_cegos": [] if cegos is None else np.round(cegos, 3).tolist(),
         "corpo": CORPO._asdict(),
         "montagem": {"x_m": MONTAGEM.x_m, "y_m": MONTAGEM.y_m, "frente_graus": MONTAGEM.frente_graus},
     }
@@ -350,9 +377,8 @@ def _ler_voltas(ser) -> None:
                 angulos, distancias = [], []
             elif inicio:
                 angulos, distancias = [], []
-            if qualidade > 0 and distancia > 0:
-                angulos.append(angulo)
-                distancias.append(distancia)
+            angulos.append(angulo)
+            distancias.append(distancia if qualidade > 0 else 0.0)
 
 
 FALHAS_PARA_RESET = 3   # tentativas seguidas sem sucesso antes de mandar RESET ao laser

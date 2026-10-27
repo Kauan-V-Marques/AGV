@@ -83,7 +83,8 @@ lidar_state = {
     "voltas": 0,
     "at": 0.0,
     "pontos": None,     # np.ndarray (N, 2), metros, referencial do AGV
-    "folgas": {},       # setor -> metros ate a borda do AGV (None = nada visto)
+    "cegos": None,      # np.ndarray (N, 2): sem leitura, mas provavelmente algo perto demais do laser
+    "folgas": {},       # setor -> metros ate a borda do AGV (None = nada visto), contando os cegos
 }
 
 settings_lock = threading.Lock()

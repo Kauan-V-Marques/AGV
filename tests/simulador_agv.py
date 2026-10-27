@@ -5,7 +5,8 @@ conversao de comando para o Arduino) e simula so o que e fisico:
 
 - Kinect v1: profundidade bruta de 11 bits (2047 = sem leitura), campo de 57 graus e
   zona cega abaixo de 0,5 m, como o sensor real;
-- RPLIDAR: ~13 voltas/s, ~120 pontos por volta, ruido de 1 cm, angulo no sentido horario;
+- RPLIDAR: ~13 voltas/s, ~120 pontos por volta, ruido de 1 cm, angulo no sentido horario,
+  sem eco abaixo de 0,15 m e acima de 12 m;
 - firmware do Arduino (sketch_may13a): filtro de 3 amostras, zona morta de +-30 na
   direcao, potencia de cada roda, protecao anti-reversao e timeout de 500 ms;
 - tracao diferencial: velocidade de cada roda proporcional ao PWM.
@@ -36,6 +37,8 @@ BITOLA_M = 0.45         # distancia entre as rodas
 CORPO = geometria.Corpo(frente_m=0.30, tras_m=0.30, largura_m=0.50)
 AVANCO_KINECT_M = 0.25  # Kinect a frente do eixo das rodas
 LIDAR_XY = (0.0, 0.0)   # LIDAR sobre o eixo das rodas
+LIDAR_QUINA_XY = (0.25, 0.15)  # como no AGV real: em cima do Kinect, na quina dianteira esquerda
+LIDAR_ALCANCE_M = (0.15, 12.0)  # fora disso o laser devolve a amostra sem eco
 PONTOS_POR_VOLTA = 120
 LIDAR_HZ = 13.0
 KINECT_HZ = 10.0        # quadros processados por segundo (o real entrega 30)
@@ -91,7 +94,8 @@ def lidar_volta(pose_lidar: Pose, segmentos: np.ndarray, rng) -> tuple[np.ndarra
     angulos = (inicio + np.arange(PONTOS_POR_VOLTA) * 360.0 / PONTOS_POR_VOLTA) % 360.0
     distancia = raios(np.array([pose_lidar.x, pose_lidar.y]), pose_lidar.theta - np.radians(angulos), segmentos)
     distancia = distancia + rng.normal(0.0, 0.01, distancia.shape)
-    return angulos, np.where(np.isfinite(distancia) & (distancia < 12.0), distancia, 0.0)
+    minimo, maximo = LIDAR_ALCANCE_M
+    return angulos, np.where(np.isfinite(distancia) & (distancia >= minimo) & (distancia < maximo), distancia, 0.0)
 
 
 # ── Firmware e cinematica ───────────────────────────────────────────
@@ -186,6 +190,7 @@ class Simulacao:
     pose: Pose = Pose(0.0, 0.0, 0.0)          # eixo das rodas, no mundo
     com_lidar: bool = True
     com_kinect: bool = True
+    lidar_xy: tuple = LIDAR_XY
     semente: int = 0
     firmware: Firmware = field(default_factory=Firmware)
     agora: float = 1000.0
@@ -199,12 +204,12 @@ class Simulacao:
         return compor(self.pose, Pose(AVANCO_KINECT_M, 0.0, 0.0))
 
     def pose_lidar(self) -> Pose:
-        return compor(self.pose, Pose(LIDAR_XY[0], LIDAR_XY[1], 0.0))
+        return compor(self.pose, Pose(self.lidar_xy[0], self.lidar_xy[1], 0.0))
 
     def contexto(self) -> ExitStack:
         pilha = ExitStack()
         pilha.enter_context(patch.object(util, "now", lambda: self.agora))
-        pilha.enter_context(patch.object(rplidar, "MONTAGEM", geometria.Montagem(x_m=LIDAR_XY[0], y_m=LIDAR_XY[1])))
+        pilha.enter_context(patch.object(rplidar, "MONTAGEM", geometria.Montagem(x_m=self.lidar_xy[0], y_m=self.lidar_xy[1])))
         pilha.enter_context(patch.object(rplidar, "CORPO", CORPO))
         return pilha
 
@@ -219,9 +224,9 @@ class Simulacao:
                                     right_clearance_m=dire, last_frame_at=self.agora)
         if self.com_lidar and self.agora >= self.prox["lidar"]:
             self.prox["lidar"] = self.agora + 1.0 / LIDAR_HZ
+            # a volta inteira, como a thread real: as amostras sem eco tambem contam
             angulos, distancias = lidar_volta(self.pose_lidar(), self.segmentos, self.rng)
-            validos = distancias > 0
-            rplidar.publicar(list(angulos[validos]), list(distancias[validos]), self.agora, LIDAR_HZ)
+            rplidar.publicar(list(angulos), list(distancias), self.agora, LIDAR_HZ)
 
     def rodar(self, segundos: float, decidir: Optional[Callable[[], tuple[int, int, str]]] = None,
               a_cada: Optional[Callable[[float], None]] = None) -> Resultado:

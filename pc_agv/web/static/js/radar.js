@@ -125,6 +125,19 @@ function desenharEm(canvas, compacto) {
     ctx.fill();
   }
 
+  // perto demais para o laser medir (sem eco): um "x" vermelho onde a seguranca supoe o obstaculo
+  ctx.strokeStyle = cor("--perigo");
+  ctx.lineWidth = 1.5;
+  for (const [x, y] of (ultimo && ultimo.lista_cegos) || []) {
+    const [px, py] = tela(x, y);
+    ctx.beginPath();
+    ctx.moveTo(px - 3, py - 3);
+    ctx.lineTo(px + 3, py + 3);
+    ctx.moveTo(px + 3, py - 3);
+    ctx.lineTo(px - 3, py + 3);
+    ctx.stroke();
+  }
+
   if ((!ultimo || !ultimo.online) && compacto) {
     ctx.fillStyle = cor("--perigo");
     ctx.font = "12px system-ui, sans-serif";
@@ -149,7 +162,8 @@ async function ler() {
       const folgas = (ultimo && ultimo.folgas) || {};
       SETORES.forEach((setor) => atualizarFolga(setor, folgas[setor]));
       $("radar-sub").textContent = ultimo && ultimo.online
-        ? `RPLIDAR · ${ultimo.hz} voltas/s · ${ultimo.pontos} pontos · frente para cima`
+        ? `RPLIDAR · ${ultimo.hz} voltas/s · ${ultimo.pontos} pontos`
+          + (ultimo.cegos ? ` · ${ultimo.cegos} perto demais (x)` : "") + " · frente para cima"
         : "RPLIDAR offline";
       desenharRadar();
     } catch (erro) {
