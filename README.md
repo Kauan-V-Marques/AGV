@@ -2021,24 +2021,3 @@ Projeto acadêmico desenvolvido na disciplina UPX — Realidade Aumentada do Cen
 **Instituição:** Centro Universitário Facens
 **Disciplina:** UPX — Realidade Aumentada
 **Semestre:** 2026.2
-
----
-
-## Checklist de Entrega
-
-- [x] Código-fonte atualizado
-- [ ] README completamente preenchido
-- [x] Versões das tecnologias registradas
-- [x] Arquitetura apresentada
-- [x] Funcionamento da RA explicado
-- [x] Estrutura de pastas documentada
-- [x] Scripts principais descritos
-- [x] Procedimento de instalação documentado
-- [x] Procedimento de execução documentado
-- [x] Screenshots reais adicionados (sem hardware)
-- [ ] Foto/vídeo do AGV em funcionamento
-- [x] Testes automatizados e de painel registrados
-- [ ] Testes com o AGV registrados
-- [ ] Dispositivos do AGV e do operador informados
-- [x] Limitações conhecidas documentadas
-- [x] Commits representam a evolução do projeto
