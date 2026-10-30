@@ -280,8 +280,7 @@ Persona e jornada do usuário, quando elaboradas, ficam em [`docs/documents/`](d
 | Equipamento | Fabricante / modelo | Característica relevante | Utilização |
 |---|---|---|---|
 | Sensor RGB-D | Microsoft Kinect v1 (no AGV atual, o modelo *Kinect for Windows*: motor USB 045e:02c2) | RGB 640×480, profundidade por luz estruturada (11 bits), motor de tilt, acelerômetro; precisa de fonte própria | Vídeo do operador, distâncias e modo autônomo |
-| Câmera traseira | Stereolabs ZED ⚠️ CONFERIR modelo — ou, sem ela, a webcam integrada do notebook | Câmera estéreo USB (V4L2); o reconhecimento usa a metade esquerda do quadro | Vídeo da traseira e reconhecimento facial |
-| LIDAR 2D | Slamtec RPLIDAR, família A1/A2 (GET_INFO: modelo 0x26, firmware 1.24, hardware 5) ⚠️ CONFERIR modelo na etiqueta | 360°, serial 115200 baud pelo adaptador CP2102 (`/dev/rplidar`); cerca de 13 voltas/s e 120 pontos por volta com o PWM padrão; o software usa de 0,15 m a 8 m | Folgas em 360°, autônomo, segurança da IA, mapa e radar do painel |
+| LIDAR 2D | Slamtec RPLIDAR, família A1 | 360°, serial 115200 baud pelo adaptador CP2102 (`/dev/rplidar`); cerca de 13 voltas/s e 120 pontos por volta com o PWM padrão; o software usa de 0,15 m a 8 m | Folgas em 360°, autônomo, segurança da IA, mapa e radar do painel |
 | Microcontrolador | Arduino Uno (no AGV atual, ligado por um conversor USB FTDI FT232R: `/dev/agv-arduino`) | Serial USB 9600 baud; PWM nos pinos 5 e 9 | Recebe `aceleração,direção` e aciona os motores |
 | Controladores de motor | 2× controlador BLDC YWMJZEU | Entradas PWM, DIR e BRAKE | Potência dos motores direito e esquerdo |
 | Motores | 2× Rodas de Hover 6.5" 250W 36V | Tração diferencial | Movimento do AGV |
