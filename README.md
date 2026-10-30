@@ -1633,8 +1633,7 @@ Só com o Kinect o AGV bate com decisão "livre": quando o obstáculo entra na z
 - Validação da odometria visual em simulação: [seção 22.3](#223-odometria-visual-em-simulação)
 - Foto do AGV montado ![image](docs/images/agv.jpg)
 - Captura do HUD com o vídeo real do Kinect ![image](docs/images/hud-agv.jpg)
-- Vídeo de demonstração<br>
-<video src="/docs/videos/demo_agv_comprimido.mp4" width="320" height="240" controls></video>
+- Vídeo de demonstração [https://youtu.be/7LNj08ofaSk](https://youtu.be/7LNj08ofaSk)
 
 
 ---
@@ -1648,7 +1647,7 @@ Só com o Kinect o AGV bate com decisão "livre": quando o obstáculo entra na z
 | Modelo de documentação da disciplina | [github.com/dr-ohata/upx-modelo](https://github.com/dr-ohata/upx-modelo) |
 | Driver do Kinect v1 | [github.com/OpenKinect/libfreenect](https://github.com/OpenKinect/libfreenect) |
 | Quadro de tarefas e sprints | Trello da equipe (privado; acesso por convite) |
-
+| Vídeo de demonstração | [https://youtu.be/7LNj08ofaSk](https://youtu.be/7LNj08ofaSk) |
 ---
 
 ## 27. Cronograma Técnico
